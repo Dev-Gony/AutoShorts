@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import src.pipeline as pipeline_module
 from src.models import BlogContent, ShortScript, SubtitleSegment
@@ -54,10 +55,20 @@ class FakeRenderer:
 
 
 def test_pipeline_runs_end_to_end_without_external_api(monkeypatch, tmp_path):
+    fake_settings = SimpleNamespace(
+        max_video_seconds=59.0,
+        temp_dir=tmp_path / "temp",
+        output_dir=tmp_path / "output",
+        background_dir=tmp_path / "backgrounds",
+        ensure_directories=lambda: (
+            (tmp_path / "temp").mkdir(parents=True, exist_ok=True),
+            (tmp_path / "output").mkdir(parents=True, exist_ok=True),
+            (tmp_path / "backgrounds").mkdir(parents=True, exist_ok=True),
+        ),
+    )
+
+    monkeypatch.setattr(pipeline_module, "settings", fake_settings)
     monkeypatch.setattr(pipeline_module, "get_scraper", lambda url: FakeScraper())
-    monkeypatch.setattr(pipeline_module.settings, "temp_dir", tmp_path / "temp")
-    monkeypatch.setattr(pipeline_module.settings, "output_dir", tmp_path / "output")
-    monkeypatch.setattr(pipeline_module.settings, "background_dir", tmp_path / "backgrounds")
 
     pipeline = Pipeline(
         script_generator=FakeScriptGenerator(),
