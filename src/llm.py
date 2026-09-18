@@ -55,3 +55,31 @@ class ScriptGenerator:
             script=script,
             hashtags=[str(x) for x in data.get("hashtags", [])][:5],
         )
+
+    def shorten(self, item: ShortScript, target_chars: int = 300) -> ShortScript:
+        prompt = f"""아래 한국어 숏폼 대본의 사실관계와 핵심 내용은 유지하면서
+약 {target_chars}자 분량으로 더 짧고 빠르게 말할 수 있게 다듬으세요.
+
+규칙:
+- 새로운 사실 추가 금지
+- 훅 유지
+- 자연스러운 구어체
+- 결과는 대본 본문만 출력
+- {settings.max_script_chars}자를 절대 넘지 말 것
+
+대본:
+{item.script}
+"""
+        response = self.client.responses.create(model=settings.script_model, input=prompt)
+        script = response.output_text.strip()
+        if not script:
+            raise ScriptGenerationError("축약 대본이 비어 있습니다.")
+        if len(script) > settings.max_script_chars:
+            script = script[: settings.max_script_chars].rstrip()
+
+        return ShortScript(
+            title=item.title,
+            hook=item.hook,
+            script=script,
+            hashtags=item.hashtags,
+        )
