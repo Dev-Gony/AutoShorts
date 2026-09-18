@@ -13,15 +13,7 @@ Scraper는 플랫폼별 Adapter 구조:
 - TistoryScraper
 - GenericScraper
 
-### 오늘 결정한 사항
-- 기능 개발 브랜치: `feat/mvp-foundation`
-- 대본/TTS/전사 모델은 환경변수로 교체 가능
-- 자막은 TTS 오디오를 재전사한 타임스탬프를 우선 사용
-- 렌더러는 MoviePy 2.x로 MVP 구현 후 3분 KPI 미달 시 FFmpeg 직접 호출 검토
-- 블로그 이미지 URL도 추출해 후속 버전에서 영상 소재로 재사용 가능하게 유지
-- 저장소 자체 검증을 위해 GitHub Actions CI 추가
-
-### 구현 완료
+### 기반 구현 완료
 - [x] 저장소 초기화
 - [x] PRD/개발일지
 - [x] URL 검증
@@ -35,30 +27,50 @@ Scraper는 플랫폼별 Adapter 구조:
 - [x] SRT 생성
 - [x] MoviePy 9:16 렌더러
 - [x] CLI End-to-End 파이프라인
-- [x] Scraper 단위 테스트
+- [x] 59초 초과 시 자동 축약/TTS 재시도
+- [x] 배경 영상 미등록 시 기본 배경 fallback
 - [x] GitHub Actions CI
 
-### 현재 검증 단계
-코드 구조상 URL 하나를 받아 최종 MP4까지 이어지는 E2E 흐름을 구현했다.
-실제 외부 블로그 URL + OpenAI API + 배경 MP4를 사용한 실데이터 실행 검증은 다음 단계다.
+### 2차 작업 - 검증/UI
+기능 연결을 실제 사용 형태에 가깝게 검증하기 위한 작업 진행.
+
+추가 구현:
+- [x] Pipeline dependency injection 구조
+- [x] UI용 progress callback
+- [x] Streamlit MVP UI
+- [x] 실제 URL Scraper smoke command
+- [x] 외부 API 없는 Mock E2E 테스트
+- [x] 결과 MP4 UI 재생/다운로드
+
+Mock E2E 검증 범위:
+Scraper → Script Generator → TTS → timed subtitle → Renderer → output MP4
+
+### 현재 남은 핵심 검증
+- [ ] 실제 네이버 공개 글 본문 추출
+- [ ] 실제 티스토리 공개 글 본문 추출
+- [ ] 실제 OpenAI API 대본 생성
+- [ ] 실제 TTS + timestamp transcription
+- [ ] 실제 MoviePy 한국어 자막 렌더링
+- [ ] 실제 45~58초 영상 처리 시간 측정
+- [ ] 3분 KPI 검증
 
 ### 다음 작업
-1. CI 통과 여부 확인 및 실패 수정
-2. 실제 네이버/티스토리 샘플 URL 테스트
-3. 59초 초과 시 대본 자동 축약/재생성 루프
-4. 자막 가독성 개선 및 한국어 폰트 전략
-5. 렌더링 시간 측정
-6. 3분 KPI 미달 시 FFmpeg 직접 렌더러 전환
-7. Streamlit UI
+1. CI에서 Mock E2E 포함 전체 테스트 통과 확인
+2. 실 URL Scraper 검증
+3. 실 API E2E 실행을 위한 runbook 확정
+4. 한국어 자막 폰트/줄바꿈 개선
+5. 렌더링 시간 계측
+6. 3분 초과 시 FFmpeg renderer 검토
 
 ### 리스크
-- 네이버 SmartEditor 버전별 DOM 차이
+- 네이버 SmartEditor DOM 버전 차이
 - 이미지 위주 블로그 글
-- 외부 요청 차단/레이트리밋
+- 외부 사이트 요청 차단/레이트리밋
+- 한국어 TextClip 폰트 환경 차이
 - MoviePy 렌더링 속도
-- 한국어 자막 폰트 의존성
-- 실제 OpenAI 계정에서 사용 가능한 모델명/권한 차이 가능성
+- 실제 OpenAI API 계정의 모델 접근 권한 차이
 
-### 검증 메모
-ChatGPT 작업 환경의 일반 네트워크에서 github.com DNS 접근이 차단되어 로컬 clone 기반 테스트는 수행하지 못했다.
-대신 GitHub Actions에서 compileall + pytest를 수행하도록 CI를 추가했다.
+### 개발 원칙
+- API Key는 Git에 저장하지 않는다.
+- 실 API가 없어도 Mock 테스트로 파이프라인 연결 상태를 검증한다.
+- 외부 URL을 사용하는 검증은 CI 필수 테스트가 아니라 수동 smoke test로 분리한다.
