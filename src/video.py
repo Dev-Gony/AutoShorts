@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from moviepy import AudioFileClip, CompositeVideoClip, TextClip, VideoFileClip, concatenate_videoclips
+from moviepy import (
+    AudioFileClip,
+    ColorClip,
+    CompositeVideoClip,
+    TextClip,
+    VideoFileClip,
+    concatenate_videoclips,
+)
 from src.models import SubtitleSegment
 
 class VideoRenderer:
@@ -11,7 +18,7 @@ class VideoRenderer:
 
     def render(
         self,
-        background_path: Path,
+        background_path: Path | None,
         audio_path: Path,
         subtitles: list[SubtitleSegment],
         output_path: Path,
@@ -20,11 +27,18 @@ class VideoRenderer:
 
         with AudioFileClip(str(audio_path)) as audio:
             duration = audio.duration
-            background = VideoFileClip(str(background_path))
+            source = None
 
-            try:
-                repeats = max(1, math.ceil(duration / background.duration))
-                looped = concatenate_videoclips([background] * repeats).subclipped(0, duration)
+            if background_path is None:
+                vertical = ColorClip(
+                    size=(self.WIDTH, self.HEIGHT),
+                    color=(24, 24, 28),
+                    duration=duration,
+                )
+            else:
+                source = VideoFileClip(str(background_path))
+                repeats = max(1, math.ceil(duration / source.duration))
+                looped = concatenate_videoclips([source] * repeats).subclipped(0, duration)
 
                 scaled = looped.resized(height=self.HEIGHT)
                 if scaled.w < self.WIDTH:
@@ -37,7 +51,8 @@ class VideoRenderer:
                     height=self.HEIGHT,
                 )
 
-                layers = [vertical]
+            layers = [vertical]
+            try:
                 for segment in subtitles:
                     clip = TextClip(
                         text=segment.text,
@@ -56,7 +71,11 @@ class VideoRenderer:
                     )
                     layers.append(clip)
 
-                final = CompositeVideoClip(layers, size=(self.WIDTH, self.HEIGHT)).with_audio(audio)
+                final = CompositeVideoClip(
+                    layers,
+                    size=(self.WIDTH, self.HEIGHT),
+                ).with_audio(audio)
+
                 try:
                     final.write_videofile(
                         str(output_path),
@@ -68,12 +87,11 @@ class VideoRenderer:
                     )
                 finally:
                     final.close()
-                    for layer in layers[1:]:
-                        layer.close()
-                    vertical.close()
-                    scaled.close()
-                    looped.close()
             finally:
-                background.close()
+                for layer in layers[1:]:
+                    layer.close()
+                vertical.close()
+                if source is not None:
+                    source.close()
 
         return output_path
