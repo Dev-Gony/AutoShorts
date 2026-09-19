@@ -35,7 +35,12 @@ class FakeAudioService:
         output_path.write_bytes(b"fake-audio")
         return output_path
 
-    def transcribe_segments(self, audio_path: Path) -> list[SubtitleSegment]:
+    def transcribe_segments(
+        self,
+        audio_path: Path,
+        original_text: str | None = None,
+        duration: float | None = None,
+    ) -> list[SubtitleSegment]:
         return [
             SubtitleSegment(0.0, 1.5, "이것은 자동 생성된"),
             SubtitleSegment(1.5, 3.0, "테스트 자막입니다."),
@@ -56,6 +61,7 @@ class FakeRenderer:
 
 def test_pipeline_runs_end_to_end_without_external_api(monkeypatch, tmp_path):
     fake_settings = SimpleNamespace(
+        ai_provider="gemini",
         max_video_seconds=59.0,
         temp_dir=tmp_path / "temp",
         output_dir=tmp_path / "output",
@@ -82,6 +88,7 @@ def test_pipeline_runs_end_to_end_without_external_api(monkeypatch, tmp_path):
     assert result.source.title == "테스트 블로그"
     assert result.short_script.title == "테스트 숏폼"
     assert len(result.subtitles) == 2
+    assert result.audio_path.suffix == ".wav"
     assert result.video_path.exists()
     assert result.video_path.read_bytes() == b"fake-video"
 
