@@ -12,7 +12,11 @@ BASE_DIR = Path(__file__).resolve().parent
 
 @dataclass(frozen=True)
 class Settings:
+    # Script/image analysis provider
     ai_provider: str = os.getenv("AI_PROVIDER", "gemini").strip().lower()
+
+    # Speech provider is independent from the script provider.
+    tts_provider: str = os.getenv("TTS_PROVIDER", "typecast").strip().lower()
 
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_script_model: str = (
@@ -26,10 +30,14 @@ class Settings:
         "gemini-3.1-flash-tts-preview",
     )
     gemini_tts_voice: str = os.getenv("GEMINI_TTS_VOICE", "Kore")
-    gemini_transcription_model: str = os.getenv(
-        "GEMINI_TRANSCRIPTION_MODEL",
-        "gemini-3.5-transcribe",
-    )
+
+    typecast_api_key: str = os.getenv("TYPECAST_API_KEY", "")
+    typecast_model: str = os.getenv("TYPECAST_MODEL", "ssfm-v30")
+    typecast_voice_id: str = os.getenv("TYPECAST_VOICE_ID", "").strip()
+    typecast_api_base: str = os.getenv(
+        "TYPECAST_API_BASE",
+        "https://api.typecast.ai",
+    ).rstrip("/")
 
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_script_model: str = os.getenv(
@@ -41,10 +49,6 @@ class Settings:
         "gpt-4o-mini-tts",
     )
     openai_tts_voice: str = os.getenv("OPENAI_TTS_VOICE", "coral")
-    openai_transcription_model: str = os.getenv(
-        "OPENAI_TRANSCRIPTION_MODEL",
-        "whisper-1",
-    )
 
     request_timeout_seconds: int = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "20"))
     min_source_chars: int = 100
@@ -64,6 +68,16 @@ class Settings:
         return ""
 
     @property
+    def active_tts_api_key(self) -> str:
+        if self.tts_provider == "typecast":
+            return self.typecast_api_key
+        if self.tts_provider == "gemini":
+            return self.gemini_api_key
+        if self.tts_provider == "openai":
+            return self.openai_api_key
+        return ""
+
+    @property
     def active_script_model(self) -> str:
         if self.ai_provider == "gemini":
             return self.gemini_script_model
@@ -71,7 +85,9 @@ class Settings:
 
     @property
     def active_tts_model(self) -> str:
-        if self.ai_provider == "gemini":
+        if self.tts_provider == "typecast":
+            return self.typecast_model
+        if self.tts_provider == "gemini":
             return self.gemini_tts_model
         return self.openai_tts_model
 
