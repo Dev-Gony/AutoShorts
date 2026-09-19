@@ -19,12 +19,15 @@ st.caption("블로그 URL 하나로 숏폼 영상을 자동 생성합니다.")
 
 with st.sidebar:
     st.subheader("상태")
-    if settings.openai_api_key:
-        st.success("OpenAI API Key 설정됨")
+    st.write(f"AI Provider: `{settings.ai_provider}`")
+
+    if settings.active_api_key:
+        st.success(f"{settings.ai_provider.upper()} API Key 설정됨")
     else:
-        st.error("OPENAI_API_KEY 미설정")
-    st.write(f"대본 모델: `{settings.script_model}`")
-    st.write(f"TTS 모델: `{settings.tts_model}`")
+        st.error(f"{settings.ai_provider.upper()} API Key 미설정")
+
+    st.write(f"대본 모델: `{settings.active_script_model}`")
+    st.write(f"TTS 모델: `{settings.active_tts_model}`")
     st.write(f"최대 영상 길이: {settings.max_video_seconds:.0f}초")
 
 url = st.text_input(
@@ -36,7 +39,7 @@ generate = st.button(
     "숏폼 생성",
     type="primary",
     use_container_width=True,
-    disabled=not settings.openai_api_key,
+    disabled=not settings.active_api_key,
 )
 
 if generate:

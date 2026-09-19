@@ -74,3 +74,30 @@ Scraper → Script Generator → TTS → timed subtitle → Renderer → output 
 - API Key는 Git에 저장하지 않는다.
 - 실 API가 없어도 Mock 테스트로 파이프라인 연결 상태를 검증한다.
 - 외부 URL을 사용하는 검증은 CI 필수 테스트가 아니라 수동 smoke test로 분리한다.
+
+
+## 2026-09-19
+
+### Gemini Provider 지원
+
+사용자가 Gemini API Key를 보유하고 있어 기본 AI provider를 Gemini로 전환.
+
+추가/변경:
+- [x] `AI_PROVIDER=gemini|openai`
+- [x] Gemini 대본 생성
+- [x] Gemini TTS
+- [x] Gemini WAV 출력
+- [x] Gemini 경로 자막 타이밍 자동 생성
+- [x] OpenAI provider 기존 기능 유지
+- [x] CLI / Streamlit / doctor provider-aware 전환
+- [x] `google-genai` 의존성 추가
+
+기본 Gemini 모델:
+- Script: `gemini-2.5-flash-lite`
+- TTS: `gemini-3.1-flash-tts-preview`
+
+실사용 검증 예정:
+1. 사용자 Gemini API Key로 doctor 재확인
+2. 실제 네이버 블로그 E2E
+3. TTS 모델 quota/사용 가능 여부 확인
+4. 한국어 자막 렌더링 확인

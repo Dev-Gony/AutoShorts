@@ -29,11 +29,25 @@ def main() -> int:
         )
     )
 
+    provider_ok = settings.ai_provider in {"gemini", "openai"}
     checks.append(
         check(
-            "OPENAI_API_KEY",
-            bool(settings.openai_api_key),
-            "설정됨" if settings.openai_api_key else ".env에 설정 필요",
+            "AI_PROVIDER",
+            provider_ok,
+            settings.ai_provider,
+        )
+    )
+
+    key_name = (
+        "GEMINI_API_KEY"
+        if settings.ai_provider == "gemini"
+        else "OPENAI_API_KEY"
+    )
+    checks.append(
+        check(
+            key_name,
+            bool(settings.active_api_key),
+            "설정됨" if settings.active_api_key else ".env에 설정 필요",
         )
     )
 

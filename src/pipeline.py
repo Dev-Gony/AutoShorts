@@ -59,7 +59,8 @@ class Pipeline:
         short_script = self.script_generator.generate(source)
 
         self._progress(3, "TTS 음성 생성")
-        audio_path = work_dir / "voice.mp3"
+        audio_suffix = ".wav" if settings.ai_provider == "gemini" else ".mp3"
+        audio_path = work_dir / f"voice{audio_suffix}"
         audio_duration = 0.0
 
         for attempt in range(3):
@@ -91,7 +92,11 @@ class Pipeline:
         )
 
         self._progress(4, f"자막 타임스탬프 생성 ({audio_duration:.1f}초)")
-        subtitles = self.audio_service.transcribe_segments(audio_path)
+        subtitles = self.audio_service.transcribe_segments(
+            audio_path,
+            original_text=short_script.script,
+            duration=audio_duration,
+        )
         write_srt(subtitles, work_dir / "subtitles.srt")
 
         self._progress(5, "배경 영상 선택")
