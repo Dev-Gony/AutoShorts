@@ -191,3 +191,21 @@ MVP에서는 자동 업로드, 회원가입, 결제, 클라우드 서비스화�
 **URL 하나가 실제 MP4 하나로 끝까지 변환되는지**를 먼저 검증합니다.
 
 제품 요구사항은 [docs/PRD.md](docs/PRD.md), 개발 기록은 [docs/DEVLOG.md](docs/DEVLOG.md)에서 관리합니다.
+
+
+## Typecast TTS
+
+AutoShorts can keep Gemini/OpenAI for script and image analysis while using Typecast only for speech.
+
+```env
+AI_PROVIDER=gemini
+TTS_PROVIDER=typecast
+GEMINI_API_KEY=...
+TYPECAST_API_KEY=...
+TYPECAST_MODEL=ssfm-v30
+TYPECAST_VOICE_ID=
+```
+
+When `TYPECAST_VOICE_ID` is blank, AutoShorts calls the Typecast voice recommendation API using the selected content style and uses the top candidate for the preview. Listen to the short preview before generating the full video. To pin a voice permanently, set its API `voice_id` in `.env`.
+
+Typecast API plans are separate from the Typecast web editor plans.
