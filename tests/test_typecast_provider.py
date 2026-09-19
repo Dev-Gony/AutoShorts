@@ -128,3 +128,54 @@ def test_explicit_typecast_voice_skips_recommendation(monkeypatch):
 
     service = AudioService("food_vlog", 1.0, voice_id="tc_manual")
     assert service._resolve_typecast_voice_id() == "tc_manual"
+
+
+def test_popular_voice_resolver_requires_exact_character(monkeypatch):
+    import src.typecast_voices as voice_module
+    from src.typecast_voices import resolve_popular_typecast_voice
+
+    class ListResponse:
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return {
+                "voices": [
+                    {"voice_id": "tc_changsu", "voice_name": "박창수", "gender": "male"},
+                    {"voice_id": "tc_other", "voice_name": "박창수 비슷한 목소리"},
+                ]
+            }
+
+    monkeypatch.setattr(
+        voice_module.requests,
+        "get",
+        lambda *args, **kwargs: ListResponse(),
+    )
+    candidate = resolve_popular_typecast_voice("박창수")
+    assert candidate.voice_id == "tc_changsu"
+    assert candidate.name == "박창수"
+
+
+def test_popular_voice_resolver_never_substitutes_different_name(monkeypatch):
+    import src.typecast_voices as voice_module
+    from src.typecast_voices import resolve_popular_typecast_voice
+
+    class Response:
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return [{"voice_id": "tc_wrong", "voice_name": "다른 캐릭터"}]
+
+    monkeypatch.setattr(
+        voice_module.requests,
+        "get",
+        lambda *args, **kwargs: Response(),
+    )
+    with pytest.raises(RuntimeError, match="정확한 voice_id"):
+        resolve_popular_typecast_voice("박창수")
+
+
+def test_popular_voice_catalog_contains_documented_shorts_names():
+    from src.typecast_voices import POPULAR_SHORTS_VOICES
+
+    for name in ("박창수", "발키리", "찬구", "채린이", "호빈이", "미스터 변사", "덕춘 할배"):
+        assert name in POPULAR_SHORTS_VOICES
