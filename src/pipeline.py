@@ -2,20 +2,22 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-import requests
 from moviepy import AudioFileClip
 
 from config import settings
-from src.audio import AudioService
+from src.audio import AudioService, split_speech
+from src.captions import make_caption
 from src.llm import ScriptGenerator
-from src.models import PipelineResult
-from src.scraper import get_scraper
+from src.media import download_images
+from src.models import PipelineResult, SubtitleSegment
 from src.subtitles import write_srt
-from src.video import VideoRenderer
+from src.video import VideoRenderer, VisualSourceError
 
 ProgressCallback = Callable[[int, int, str], None]
 
@@ -23,16 +25,11 @@ ProgressCallback = Callable[[int, int, str], None]
 class Pipeline:
     TOTAL_STEPS = 6
 
-    def __init__(
-        self,
-        script_generator: ScriptGenerator | None = None,
-        audio_service: AudioService | None = None,
-        renderer: VideoRenderer | None = None,
-        progress_callback: ProgressCallback | None = None,
-    ) -> None:
+    def __init__(self, script_generator=None, audio_service=None, renderer=None,
+                 progress_callback: ProgressCallback | None = None, preset=None, speed=None):
         settings.ensure_directories()
         self.script_generator = script_generator or ScriptGenerator()
-        self.audio_service = audio_service or AudioService()
+        self.audio_service = audio_service or AudioService(preset, speed)
         self.renderer = renderer or VideoRenderer()
         self.progress_callback = progress_callback
 
@@ -42,153 +39,110 @@ class Pipeline:
         else:
             print(f"[{step}/{self.TOTAL_STEPS}] {message}")
 
-    def _audio_duration(self, path: Path) -> float:
+    @staticmethod
+    def _audio_duration(path: Path) -> float:
         with AudioFileClip(str(path)) as audio:
             return float(audio.duration)
 
-    def _download_blog_images(
-        self,
-        image_urls: list[str],
-        work_dir: Path,
-        referer: str,
-        limit: int = 12,
-    ) -> list[Path]:
-        if not image_urls:
-            return []
-
-        image_dir = work_dir / "images"
-        image_dir.mkdir(parents=True, exist_ok=True)
-
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/152 Safari/537.36"
-            ),
-            "Referer": referer,
-        }
-        extensions = {
-            "image/jpeg": ".jpg",
-            "image/jpg": ".jpg",
-            "image/png": ".png",
-            "image/webp": ".webp",
-        }
-
-        downloaded: list[Path] = []
-        for image_url in image_urls:
-            if len(downloaded) >= limit:
-                break
-            try:
-                response = requests.get(
-                    image_url,
-                    headers=headers,
-                    timeout=15,
-                )
-                response.raise_for_status()
-                content_type = response.headers.get("Content-Type", "").split(";")[0].lower()
-                suffix = extensions.get(content_type)
-                if suffix is None or len(response.content) < 1024:
-                    continue
-
-                path = image_dir / f"{len(downloaded) + 1:02d}{suffix}"
-                path.write_bytes(response.content)
-                downloaded.append(path)
-            except requests.RequestException:
-                continue
-
-        return downloaded
+    def _download_blog_images(self, image_urls, work_dir, referer, limit=12):
+        return download_images(image_urls, work_dir / "images", referer, limit)
 
     def run(self, url: str) -> PipelineResult:
         started = time.perf_counter()
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
         work_dir = settings.temp_dir / run_id
-        work_dir.mkdir(parents=True, exist_ok=True)
+        work_dir.mkdir(parents=True, exist_ok=False)
+        timings = {}
+        stage = "source"
+        try:
+            self._progress(1, "본문과 사진 확인")
+            from src.scraper import get_scraper
+            source = get_scraper(url).extract(url)
+            (work_dir / "source.txt").write_text(source.text, encoding="utf-8")
+            (work_dir / "source.json").write_text(json.dumps(asdict(source), ensure_ascii=False, indent=2), encoding="utf-8")
+            backgrounds = sorted(settings.background_dir.glob("*.mp4"))
+            background = backgrounds[0] if backgrounds else None
+            images = self._download_blog_images(source.images, work_dir, source.url) if background is None else []
+            if not images and background is None:
+                raise VisualSourceError("유효한 사진을 받지 못했습니다. 회색 영상은 만들지 않습니다. API 호출 전에 중단했습니다.")
+            self.renderer._find_korean_font()
+            self._progress(1, f"검증된 사진 {len(images)}장 / 폰트 준비 완료")
+            timings[stage] = time.perf_counter() - started
 
-        self._progress(1, "URL 검사 및 본문 추출")
-        source = get_scraper(url).extract(url)
-        (work_dir / "source.txt").write_text(source.text, encoding="utf-8")
-
-        self._progress(2, f"숏폼 대본 생성 ({len(source.text):,}자 원문)")
-        short_script = self.script_generator.generate(source)
-
-        self._progress(3, "TTS 음성 생성")
-        audio_suffix = ".wav" if settings.ai_provider == "gemini" else ".mp3"
-        audio_path = work_dir / f"voice{audio_suffix}"
-        audio_duration = 0.0
-
-        for attempt in range(3):
-            self.audio_service.synthesize(short_script.script, audio_path)
-            audio_duration = self._audio_duration(audio_path)
-
-            if audio_duration <= settings.max_video_seconds:
-                break
-
-            if attempt == 2:
-                raise RuntimeError(
-                    f"자동 축약 후에도 음성이 {audio_duration:.1f}초로 "
-                    f"{settings.max_video_seconds:.0f}초를 초과했습니다."
+            stage = "script"
+            tick = time.perf_counter()
+            self._progress(2, "대화체 대본과 장면별 사진 구성")
+            script = self.script_generator.generate(source, image_paths=images)
+            timings[stage] = time.perf_counter() - tick
+            stage = "voice"
+            tick = time.perf_counter()
+            for attempt in range(2):
+                (work_dir / "script.json").write_text(json.dumps(asdict(script), ensure_ascii=False, indent=2), encoding="utf-8")
+                for line in [script.title] + [s.text for s in script.scenes or split_speech(script.script)]:
+                    make_caption(line)
+                audio_path = work_dir / f"voice_{attempt + 1}.wav"
+                self._progress(3, "장면별 음성 연출 / 생성된 발화는 캐시 재사용")
+                scenes = script.scenes or split_speech(script.script)
+                subtitles = self.audio_service.synthesize_scenes(
+                    scenes, audio_path,
+                    progress=lambda n, total: self._progress(3, f"음성 {n}/{total} 완료"),
                 )
+                duration = self._audio_duration(audio_path)
+                if duration <= settings.max_video_seconds:
+                    break
+                if attempt:
+                    raise RuntimeError(f"음성 {duration:.1f}초: 길이 제한 초과. 대본/음성을 보관했습니다.")
+                target = max(100, int(len(script.script) * 50 / duration))
+                self._progress(3, f"{duration:.1f}초 → 문장 단위 축약 1회")
+                script = self.script_generator.shorten(script, target_chars=target)
+            timings[stage] = time.perf_counter() - tick
+            stage = "timeline"
+            self._progress(4, "실제 발화 길이로 자막·장면 타임라인 확정")
+            write_srt(subtitles, work_dir / "subtitles.srt")
+            manifest = {
+                "schema_version": 2, "title": script.title, "duration": duration,
+                "audio": audio_path.name, "images": [p.relative_to(work_dir).as_posix() for p in images],
+                "background": str(background.resolve()) if background else None,
+                "subtitles": [asdict(s) for s in subtitles],
+                "voice_preset": getattr(self.audio_service, "preset", "injected"),
+                "voice_speed": getattr(self.audio_service, "speed", None),
+                "timing_method": "measured_utterance_pcm", "stage_seconds": timings,
+            }
+            manifest_path = work_dir / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._progress(5, "2줄 자막 안전영역 / 사진 전환 검증")
+            stage = "render"
+            tick = time.perf_counter()
+            self._progress(6, "9:16 영상 렌더링 및 실제 출력 검증")
+            video_path = settings.output_dir / f"autoshorts_{run_id}.mp4"
+            self.renderer.render(background, audio_path, subtitles, video_path, image_paths=images, title=script.title)
+            timings[stage] = time.perf_counter() - tick
+            elapsed = time.perf_counter() - started
+            manifest.update(elapsed_seconds=elapsed, stage_seconds=timings, kpi_180s_met=elapsed < 180)
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+            return PipelineResult(source, script, audio_path, video_path, subtitles, elapsed, work_dir)
+        except Exception:
+            # Do not persist raw provider exception strings; some echo credentials.
+            (work_dir / "failure.json").write_text(json.dumps({
+                "stage": stage, "elapsed_seconds": time.perf_counter() - started,
+            }), encoding="utf-8")
+            raise
 
-            self._progress(
-                3,
-                f"음성 {audio_duration:.1f}초 → 자동 축약 후 재생성",
-            )
-            target_chars = max(220, int(len(short_script.script) * 0.82))
-            short_script = self.script_generator.shorten(
-                short_script,
-                target_chars=target_chars,
-            )
 
-        (work_dir / "script.json").write_text(
-            json.dumps(short_script.__dict__, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-        self._progress(4, f"자막 타임스탬프 생성 ({audio_duration:.1f}초)")
-        subtitles = self.audio_service.transcribe_segments(
-            audio_path,
-            original_text=short_script.script,
-            duration=audio_duration,
-        )
-        write_srt(subtitles, work_dir / "subtitles.srt")
-
-        self._progress(5, "영상 소스 준비")
-        backgrounds = sorted(settings.background_dir.glob("*.mp4"))
-        background_path = backgrounds[0] if backgrounds else None
-        image_paths: list[Path] = []
-
-        if background_path is None:
-            image_paths = self._download_blog_images(
-                source.images,
-                work_dir,
-                source.url,
-            )
-            if image_paths:
-                self._progress(
-                    5,
-                    f"배경 MP4 없음 → 블로그 사진 {len(image_paths)}장 사용",
-                )
-            else:
-                self._progress(
-                    5,
-                    "사용 가능한 블로그 사진 없음 → 기본 배경 사용",
-                )
-
-        self._progress(6, "9:16 MP4 렌더링")
-        video_path = settings.output_dir / f"autoshorts_{run_id}.mp4"
-        self.renderer.render(
-            background_path,
-            audio_path,
-            subtitles,
-            video_path,
-            image_paths=image_paths,
-        )
-
-        elapsed = time.perf_counter() - started
-        return PipelineResult(
-            source=source,
-            short_script=short_script,
-            audio_path=audio_path,
-            video_path=video_path,
-            subtitles=subtitles,
-            elapsed_seconds=elapsed,
-        )
+def rerender(run: str = "latest") -> Path:
+    """Re-encode a v2 run with cached audio/media. No provider client or API calls."""
+    if run == "latest":
+        runs = sorted(settings.temp_dir.glob("*/manifest.json"), key=lambda p: p.stat().st_mtime)
+        if not runs:
+            raise FileNotFoundError("v2 저장 결과가 없습니다. 먼저 새 버전으로 한 번 생성하세요.")
+        folder = runs[-1].parent
+    else:
+        folder = Path(run).resolve()
+    data = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    output = settings.output_dir / f"{folder.name}_restyled_{uuid.uuid4().hex[:6]}.mp4"
+    VideoRenderer().render(
+        Path(data["background"]) if data.get("background") else None,
+        folder / data["audio"], [SubtitleSegment(**s) for s in data["subtitles"]], output,
+        image_paths=[folder / p for p in data["images"]], title=data["title"],
+    )
+    return output
