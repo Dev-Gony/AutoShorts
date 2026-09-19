@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+import requests
 from moviepy import AudioFileClip
 
 from config import settings
@@ -44,6 +45,57 @@ class Pipeline:
     def _audio_duration(self, path: Path) -> float:
         with AudioFileClip(str(path)) as audio:
             return float(audio.duration)
+
+    def _download_blog_images(
+        self,
+        image_urls: list[str],
+        work_dir: Path,
+        referer: str,
+        limit: int = 12,
+    ) -> list[Path]:
+        if not image_urls:
+            return []
+
+        image_dir = work_dir / "images"
+        image_dir.mkdir(parents=True, exist_ok=True)
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 Chrome/152 Safari/537.36"
+            ),
+            "Referer": referer,
+        }
+        extensions = {
+            "image/jpeg": ".jpg",
+            "image/jpg": ".jpg",
+            "image/png": ".png",
+            "image/webp": ".webp",
+        }
+
+        downloaded: list[Path] = []
+        for image_url in image_urls:
+            if len(downloaded) >= limit:
+                break
+            try:
+                response = requests.get(
+                    image_url,
+                    headers=headers,
+                    timeout=15,
+                )
+                response.raise_for_status()
+                content_type = response.headers.get("Content-Type", "").split(";")[0].lower()
+                suffix = extensions.get(content_type)
+                if suffix is None or len(response.content) < 1024:
+                    continue
+
+                path = image_dir / f"{len(downloaded) + 1:02d}{suffix}"
+                path.write_bytes(response.content)
+                downloaded.append(path)
+            except requests.RequestException:
+                continue
+
+        return downloaded
 
     def run(self, url: str) -> PipelineResult:
         started = time.perf_counter()
@@ -99,15 +151,37 @@ class Pipeline:
         )
         write_srt(subtitles, work_dir / "subtitles.srt")
 
-        self._progress(5, "배경 영상 선택")
+        self._progress(5, "영상 소스 준비")
         backgrounds = sorted(settings.background_dir.glob("*.mp4"))
         background_path = backgrounds[0] if backgrounds else None
+        image_paths: list[Path] = []
+
         if background_path is None:
-            self._progress(5, "배경 MP4 없음 → 기본 배경 사용")
+            image_paths = self._download_blog_images(
+                source.images,
+                work_dir,
+                source.url,
+            )
+            if image_paths:
+                self._progress(
+                    5,
+                    f"배경 MP4 없음 → 블로그 사진 {len(image_paths)}장 사용",
+                )
+            else:
+                self._progress(
+                    5,
+                    "사용 가능한 블로그 사진 없음 → 기본 배경 사용",
+                )
 
         self._progress(6, "9:16 MP4 렌더링")
         video_path = settings.output_dir / f"autoshorts_{run_id}.mp4"
-        self.renderer.render(background_path, audio_path, subtitles, video_path)
+        self.renderer.render(
+            background_path,
+            audio_path,
+            subtitles,
+            video_path,
+            image_paths=image_paths,
+        )
 
         elapsed = time.perf_counter() - started
         return PipelineResult(
