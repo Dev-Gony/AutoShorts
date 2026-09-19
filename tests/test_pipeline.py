@@ -54,6 +54,7 @@ class FakeRenderer:
         audio_path,
         subtitles,
         output_path: Path,
+        image_paths=None,
     ) -> Path:
         output_path.write_bytes(b"fake-video")
         return output_path
