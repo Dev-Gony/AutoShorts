@@ -62,16 +62,76 @@ class AudioService:
     """Directed voices with measured utterance timing, not character-ratio timing."""
 
     def __init__(self, preset: str | None = None, speed: float | None = None) -> None:
-        self.provider = settings.ai_provider
+        self.provider = settings.tts_provider
         self.preset, self.profile = selected_profile(preset)
         self.speed = float(speed if speed is not None else os.getenv("VOICE_SPEED", "1.06"))
         if not .9 <= self.speed <= 1.2:
             raise ValueError("VOICE_SPEED는 0.9~1.2 범위여야 합니다.")
         self.gemini = None
         self.openai = None
+        self.typecast = None
+        self.typecast_voice_id = None
+
+    def _resolve_typecast_voice_id(self) -> str:
+        if settings.typecast_voice_id:
+            return settings.typecast_voice_id
+        if self.typecast_voice_id:
+            return self.typecast_voice_id
+
+        import requests
+
+        response = requests.get(
+            f"{settings.typecast_api_base}/v1/voices/recommendations",
+            headers={"X-API-KEY": settings.typecast_api_key},
+            params={"query": self.profile.typecast_query},
+            timeout=(5, 15),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, list):
+            candidates = payload
+        elif isinstance(payload, dict):
+            candidates = (
+                payload.get("recommendations")
+                or payload.get("voices")
+                or payload.get("results")
+                or payload.get("data")
+                or []
+            )
+        else:
+            candidates = []
+
+        for item in candidates:
+            if isinstance(item, dict) and item.get("voice_id"):
+                self.typecast_voice_id = str(item["voice_id"])
+                return self.typecast_voice_id
+
+        raise RuntimeError(
+            "Typecast 추천 API에서 사용할 보이스를 찾지 못했습니다. "
+            "TYPECAST_VOICE_ID를 직접 지정하거나 Typecast Voice Library에서 보이스를 선택하세요."
+        )
 
     def _synthesize_raw(self, scene: ScriptScene, path: Path) -> None:
         direction = speech_direction(self.profile, scene.emphasis)
+        if self.provider == "typecast":
+            from typecast import Typecast
+            from typecast.models import SmartPrompt, TTSRequest
+
+            if self.typecast is None:
+                self.typecast = Typecast(api_key=settings.typecast_api_key)
+            voice_id = self._resolve_typecast_voice_id()
+            response = self.typecast.text_to_speech(TTSRequest(
+                text=scene.text,
+                model=settings.typecast_model,
+                voice_id=voice_id,
+                language="kor",
+                prompt=SmartPrompt(emotion_type="smart"),
+            ))
+            data = bytes(response.audio_data)
+            if not data:
+                raise RuntimeError("Typecast가 음성을 반환하지 않았습니다.")
+            path.write_bytes(data)
+            return
         if self.provider == "gemini":
             from google import genai
             from google.genai import types
@@ -139,10 +199,17 @@ class AudioService:
         raise ValueError(f"지원하지 않는 AI_PROVIDER: {self.provider}")
 
     def _cached_clip(self, scene: ScriptScene) -> Path:
-        model = settings.gemini_tts_model if self.provider == "gemini" else settings.openai_tts_model
-        voice = self.profile.voice if self.provider == "gemini" else settings.openai_tts_voice
+        if self.provider == "typecast":
+            model = settings.typecast_model
+            voice = self._resolve_typecast_voice_id()
+        elif self.provider == "gemini":
+            model = settings.gemini_tts_model
+            voice = self.profile.voice
+        else:
+            model = settings.openai_tts_model
+            voice = settings.openai_tts_voice
         key = hashlib.sha256(json.dumps({
-            "version": CACHE_VERSION, "provider": self.provider, "model": model,
+            "version": CACHE_VERSION + "-typecast-v1", "provider": self.provider, "model": model,
             "voice": voice, "direction": speech_direction(self.profile, scene.emphasis),
             "speed": self.speed, "text": scene.text,
         }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()

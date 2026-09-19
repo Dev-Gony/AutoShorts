@@ -139,3 +139,31 @@ Scraper → Script Generator → TTS → timed subtitle → Renderer → output 
 - 슈퍼쇼츠의 내부 TTS 공급자는 확인되지 않았으며 같은 엔진/음성을 사용한다고 주장하지 않는다.
 
 사용 방법과 한계: [QUALITY_V2.md](QUALITY_V2.md)
+
+
+### Typecast TTS 1차 연동
+
+Gemini TTS 미리듣기 검증 후 더 자연스러운 한국어 숏폼 내레이션을 비교하기 위해 Typecast를 1순위 TTS Provider로 분리.
+
+구현:
+- [x] 대본 Provider(`AI_PROVIDER`)와 음성 Provider(`TTS_PROVIDER`) 분리
+- [x] Typecast 공식 Python SDK 0.4.0 사용
+- [x] SSFM 3.0 + Smart Emotion
+- [x] `TYPECAST_VOICE_ID` 수동 고정 지원
+- [x] voice_id 미지정 시 Voice Recommendations API로 스타일별 후보 자동 선택
+- [x] 기존 문장별 실측 타임라인/캐시/영상 렌더링 유지
+- [x] Streamlit에서 Typecast 준비 상태와 짧은 음성 미리듣기 제공
+- [x] doctor에서 Typecast API 키 점검
+- [x] SDK request model, 보이스 추천, Smart Emotion 요청 단위 테스트
+
+실사용 검증 순서:
+1. Typecast API 계정/키 발급
+2. 짧은 음성 미리듣기
+3. 자동 추천 보이스 청취
+4. 마음에 드는 voice_id 고정
+5. 동일 블로그로 Gemini TTS 대비 결과 비교
+
+주의:
+- Typecast 웹 편집기 구독과 API 플랜은 별개.
+- 자동 추천 결과는 한국어 지원 여부를 메타데이터만으로 확정할 수 없으므로 반드시 미리듣기로 확인.
+- 실제 API 키/크레딧/음질은 사용자 로컬 계정에서 검증 필요.
