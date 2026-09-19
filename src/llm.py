@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import json
 from pathlib import Path
@@ -87,21 +88,36 @@ class ScriptGenerator:
 
             if self.client is None:
                 self.client = genai.Client(api_key=settings.gemini_api_key, http_options=types.HttpOptions(timeout=60000))
-            contents = [prompt]
+            inputs = [{"type": "text", "text": prompt}]
             for index, path in enumerate(image_paths or []):
                 with Image.open(path) as image:
                     thumbnail = ImageOps.contain(image.convert("RGB"), (384, 384))
                     buffer = io.BytesIO()
                     thumbnail.save(buffer, format="JPEG", quality=72)
-                contents.extend([f"image_index={index}", types.Part.from_bytes(data=buffer.getvalue(), mime_type="image/jpeg")])
-            response = self.client.models.generate_content(
-                model=settings.gemini_script_model, contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM, response_mime_type="application/json", response_schema=SCHEMA,
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-                ),
+                inputs.extend([
+                    {"type": "text", "text": f"image_index={index}"},
+                    {
+                        "type": "image",
+                        "mime_type": "image/jpeg",
+                        "data": base64.b64encode(buffer.getvalue()).decode("ascii"),
+                    },
+                ])
+            inputs.append({
+                "type": "text",
+                "text": "위 원문과 사진만 근거로 지정된 JSON 스키마에 맞춰 응답하세요.",
+            })
+            interaction = self.client.interactions.create(
+                model=settings.gemini_script_model,
+                input=inputs,
+                system_instruction=SYSTEM,
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": SCHEMA,
+                },
+                store=False,
             )
-            return (response.text or "").strip()
+            return (interaction.output_text or "").strip()
         if self.provider == "openai":
             from openai import OpenAI
             if self.client is None:
