@@ -44,7 +44,7 @@ def test_pcm_rejects_wrong_rate(tmp_path):
 
 
 def test_measured_timeline_and_cache(monkeypatch, tmp_path):
-    monkeypatch.setattr(audio_module, "settings", replace(settings, ai_provider="gemini", temp_dir=tmp_path))
+    monkeypatch.setattr(audio_module, "settings", replace(settings, tts_provider="gemini", temp_dir=tmp_path))
     calls = []
     service = AudioService("food_vlog", speed=1)
     def synthesize(scene, path):
@@ -67,7 +67,7 @@ def test_measured_timeline_and_cache(monkeypatch, tmp_path):
 
 
 def test_silent_tts_is_not_success(monkeypatch, tmp_path):
-    monkeypatch.setattr(audio_module, "settings", replace(settings, ai_provider="gemini", temp_dir=tmp_path))
+    monkeypatch.setattr(audio_module, "settings", replace(settings, tts_provider="gemini", temp_dir=tmp_path))
     service = AudioService(speed=1)
     monkeypatch.setattr(service, "_synthesize_raw", lambda scene, path: write_pcm(path, b"\0\0" * RATE))
     with pytest.raises(RuntimeError, match="소리"):
