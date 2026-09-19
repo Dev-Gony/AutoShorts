@@ -130,52 +130,62 @@ def test_explicit_typecast_voice_skips_recommendation(monkeypatch):
     assert service._resolve_typecast_voice_id() == "tc_manual"
 
 
-def test_popular_voice_resolver_requires_exact_character(monkeypatch):
+
+def test_browse_real_typecast_voices_prefers_shorts_use_cases(monkeypatch):
     import src.typecast_voices as voice_module
-    from src.typecast_voices import resolve_popular_typecast_voice
-
-    class ListResponse:
-        def raise_for_status(self):
-            return None
-        def json(self):
-            return {
-                "voices": [
-                    {"voice_id": "tc_changsu", "voice_name": "박창수", "gender": "male"},
-                    {"voice_id": "tc_other", "voice_name": "박창수 비슷한 목소리"},
-                ]
-            }
-
-    monkeypatch.setattr(
-        voice_module.requests,
-        "get",
-        lambda *args, **kwargs: ListResponse(),
-    )
-    candidate = resolve_popular_typecast_voice("박창수")
-    assert candidate.voice_id == "tc_changsu"
-    assert candidate.name == "박창수"
-
-
-def test_popular_voice_resolver_never_substitutes_different_name(monkeypatch):
-    import src.typecast_voices as voice_module
-    from src.typecast_voices import resolve_popular_typecast_voice
+    from src.typecast_voices import browse_typecast_voices
 
     class Response:
         def raise_for_status(self):
             return None
         def json(self):
-            return [{"voice_id": "tc_wrong", "voice_name": "다른 캐릭터"}]
+            return {
+                "voices": [
+                    {
+                        "voice_id": "voice_a",
+                        "voice_name": "일반 안내",
+                        "use_cases": ["announcement"],
+                        "models": [{"version": "ssfm-v30"}],
+                    },
+                    {
+                        "voice_id": "voice_b",
+                        "voice_name": "영상 리뷰",
+                        "use_cases": ["video", "review"],
+                        "preview_url": "https://example.com/b.mp3",
+                        "models": [{"version": "ssfm-v30"}],
+                    },
+                ]
+            }
 
-    monkeypatch.setattr(
-        voice_module.requests,
-        "get",
-        lambda *args, **kwargs: Response(),
-    )
-    with pytest.raises(RuntimeError, match="정확한 voice_id"):
-        resolve_popular_typecast_voice("박창수")
+    monkeypatch.setattr(voice_module.requests, "get", lambda *args, **kwargs: Response())
+    voices = browse_typecast_voices(limit=10)
+    assert [voice.voice_id for voice in voices] == ["voice_b", "voice_a"]
+    assert voices[0].preview_url.endswith("b.mp3")
 
 
-def test_popular_voice_catalog_contains_documented_shorts_names():
-    from src.typecast_voices import POPULAR_SHORTS_VOICES
+def test_browse_real_typecast_voices_filters_model(monkeypatch):
+    import src.typecast_voices as voice_module
+    from src.typecast_voices import browse_typecast_voices
 
-    for name in ("박창수", "발키리", "찬구", "채린이", "호빈이", "미스터 변사", "덕춘 할배"):
-        assert name in POPULAR_SHORTS_VOICES
+    class Response:
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return {
+                "voices": [
+                    {
+                        "voice_id": "old_voice",
+                        "voice_name": "구모델",
+                        "models": [{"version": "ssfm-v21"}],
+                    },
+                    {
+                        "voice_id": "new_voice",
+                        "voice_name": "신모델",
+                        "models": [{"version": "ssfm-v30"}],
+                    },
+                ]
+            }
+
+    monkeypatch.setattr(voice_module.requests, "get", lambda *args, **kwargs: Response())
+    voices = browse_typecast_voices(limit=10)
+    assert [voice.voice_id for voice in voices] == ["new_voice"]
