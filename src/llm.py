@@ -32,7 +32,16 @@ class ScriptGenerator:
             config = None
             if json_mode:
                 config = types.GenerateContentConfig(
-                    response_mime_type="application/json"
+                    response_mime_type="application/json",
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    ),
+                )
+            if config is None:
+                config = types.GenerateContentConfig(
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    )
                 )
             response = self.gemini.models.generate_content(
                 model=settings.gemini_script_model,

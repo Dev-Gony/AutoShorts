@@ -15,9 +15,11 @@ class Settings:
     ai_provider: str = os.getenv("AI_PROVIDER", "gemini").strip().lower()
 
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
-    gemini_script_model: str = os.getenv(
-        "GEMINI_SCRIPT_MODEL",
-        "gemini-2.5-flash-lite",
+    gemini_script_model: str = (
+        "gemini-3.5-flash-lite"
+        if os.getenv("GEMINI_SCRIPT_MODEL", "gemini-3.5-flash-lite")
+        == "gemini-2.5-flash-lite"
+        else os.getenv("GEMINI_SCRIPT_MODEL", "gemini-3.5-flash-lite")
     )
     gemini_tts_model: str = os.getenv(
         "GEMINI_TTS_MODEL",

@@ -101,3 +101,10 @@ Scraper → Script Generator → TTS → timed subtitle → Renderer → output 
 2. 실제 네이버 블로그 E2E
 3. TTS 모델 quota/사용 가능 여부 확인
 4. 한국어 자막 렌더링 확인
+
+
+### Gemini 모델 변경 대응
+- [x] 신규 사용자에게 중단된 `gemini-2.5-flash-lite` 제거
+- [x] 기본 대본 모델을 `gemini-3.5-flash-lite`로 변경
+- [x] 기존 로컬 .env에 2.5 모델명이 남아 있어도 자동으로 3.5로 치환
+- [x] 사용하지 않는 Automatic Function Calling 비활성화

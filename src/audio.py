@@ -34,6 +34,9 @@ class AudioService:
                 contents=f"한국어로 자연스럽고 또렷하게 읽어주세요.\n\n{text}",
                 config=types.GenerateContentConfig(
                     response_modalities=["AUDIO"],
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    ),
                     speech_config=types.SpeechConfig(
                         voice_config=types.VoiceConfig(
                             prebuilt_voice_config=types.PrebuiltVoiceConfig(
