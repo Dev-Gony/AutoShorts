@@ -24,13 +24,14 @@ def safe_error(exc: Exception) -> str:
         hints = {
             400: "API 요청 형식/모델 지원을 확인하세요.",
             401: "API 키 인증 실패입니다.",
-            403: "API 모델 접근 권한을 확인하세요.",
+            402: "API 크레딧이 부족합니다.",
+            403: "API 키 종류/계정 권한을 확인하세요.",
             404: "설정한 모델을 사용할 수 없습니다.",
             429: "호출 한도/크레딧을 확인하세요. 생성한 발화 캐시는 보존했습니다.",
         }
         return f"API {code}: {hints.get(code, '서비스 오류입니다. 잠시 후 다시 시도하세요.')}"
     text = str(exc)
-    for key in (settings.gemini_api_key, settings.openai_api_key):
+    for key in (settings.gemini_api_key, settings.openai_api_key, settings.typecast_api_key):
         if key:
             text = text.replace(key, "[REDACTED]")
     return text[:700]
