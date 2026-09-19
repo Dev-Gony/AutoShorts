@@ -9,10 +9,15 @@ from src.models import ScriptScene
 PREVIEW_TEXT = "이 골목에 이런 집이 있었어요? 오늘은 메뉴랑 분위기, 솔직하게 짚어볼게요."
 
 
-def preview_voice(preset: str = "food_vlog", speed: float | None = None) -> Path:
+def preview_voice(
+    preset: str = "food_vlog",
+    speed: float | None = None,
+    voice_id: str | None = None,
+) -> Path:
     settings.ensure_directories()
-    output = settings.output_dir / f"voice_preview_{preset}.wav"
-    service = AudioService(preset, speed)
+    suffix = voice_id or "auto"
+    output = settings.output_dir / f"voice_preview_{preset}_{suffix}.wav"
+    service = AudioService(preset, speed, voice_id=voice_id)
     service.synthesize_scenes([ScriptScene(PREVIEW_TEXT, "이런 집")], output)
     return output
 
