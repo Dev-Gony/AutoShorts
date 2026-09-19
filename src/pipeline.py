@@ -25,11 +25,19 @@ ProgressCallback = Callable[[int, int, str], None]
 class Pipeline:
     TOTAL_STEPS = 6
 
-    def __init__(self, script_generator=None, audio_service=None, renderer=None,
-                 progress_callback: ProgressCallback | None = None, preset=None, speed=None):
+    def __init__(
+        self,
+        script_generator=None,
+        audio_service=None,
+        renderer=None,
+        progress_callback: ProgressCallback | None = None,
+        preset=None,
+        speed=None,
+        voice_id: str | None = None,
+    ):
         settings.ensure_directories()
         self.script_generator = script_generator or ScriptGenerator()
-        self.audio_service = audio_service or AudioService(preset, speed)
+        self.audio_service = audio_service or AudioService(preset, speed, voice_id=voice_id)
         self.renderer = renderer or VideoRenderer()
         self.progress_callback = progress_callback
 

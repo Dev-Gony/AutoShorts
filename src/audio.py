@@ -61,7 +61,12 @@ def split_speech(text: str, limit: int = 30) -> list[ScriptScene]:
 class AudioService:
     """Directed voices with measured utterance timing, not character-ratio timing."""
 
-    def __init__(self, preset: str | None = None, speed: float | None = None) -> None:
+    def __init__(
+        self,
+        preset: str | None = None,
+        speed: float | None = None,
+        voice_id: str | None = None,
+    ) -> None:
         self.provider = settings.tts_provider
         self.preset, self.profile = selected_profile(preset)
         self.speed = float(speed if speed is not None else os.getenv("VOICE_SPEED", "1.06"))
@@ -70,7 +75,7 @@ class AudioService:
         self.gemini = None
         self.openai = None
         self.typecast = None
-        self.typecast_voice_id = None
+        self.typecast_voice_id = voice_id.strip() if voice_id else None
 
     def _resolve_typecast_voice_id(self) -> str:
         if settings.typecast_voice_id:
