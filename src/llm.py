@@ -110,11 +110,11 @@ class ScriptGenerator:
                 model=settings.gemini_script_model,
                 input=inputs,
                 system_instruction=SYSTEM,
-                response_format={
+                response_format=[{
                     "type": "text",
                     "mime_type": "application/json",
                     "schema": SCHEMA,
-                },
+                }],
                 store=False,
             )
             return (interaction.output_text or "").strip()
