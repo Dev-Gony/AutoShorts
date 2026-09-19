@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import shutil
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+import imageio_ffmpeg
 
 from config import settings
 
@@ -36,12 +37,18 @@ def main() -> int:
         )
     )
 
-    ffmpeg = shutil.which("ffmpeg")
+    try:
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        ffmpeg_ok = bool(ffmpeg and Path(ffmpeg).exists())
+    except Exception as exc:
+        ffmpeg = f"탐지 실패: {exc}"
+        ffmpeg_ok = False
+
     checks.append(
         check(
             "FFmpeg",
-            bool(ffmpeg),
-            ffmpeg or "PATH에서 찾지 못함",
+            ffmpeg_ok,
+            str(ffmpeg),
         )
     )
 
