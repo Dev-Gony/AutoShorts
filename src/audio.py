@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import os
@@ -82,27 +81,46 @@ class AudioService:
                     api_key=settings.gemini_api_key,
                     http_options=types.HttpOptions(timeout=60000),
                 )
-            interaction = self.gemini.interactions.create(
+            response = self.gemini.models.generate_content(
                 model=settings.gemini_tts_model,
-                input=direction + "\n# TRANSCRIPT\n" + scene.text,
-                response_format={"type": "audio"},
-                generation_config={
-                    "speech_config": [
-                        {"voice": self.profile.voice}
-                    ]
-                },
-                store=False,
+                contents=direction + "\n# TRANSCRIPT\n" + scene.text,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        language_code="ko-KR",
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=self.profile.voice
+                            )
+                        ),
+                    ),
+                ),
             )
-            output_audio = getattr(interaction, "output_audio", None)
-            encoded = getattr(output_audio, "data", None) if output_audio else None
-            if not encoded:
+            candidates = response.candidates or []
+            parts = candidates[0].content.parts if candidates and candidates[0].content else []
+            chunks: list[bytes] = []
+            sample_rate = RATE
+            for part in parts or []:
+                inline = getattr(part, "inline_data", None)
+                if inline and inline.data:
+                    mime = (inline.mime_type or "").lower()
+                    if not mime.startswith("audio/"):
+                        continue
+                    rate_match = re.search(r"rate=(\\d+)", mime)
+                    if rate_match:
+                        sample_rate = int(rate_match.group(1))
+                    chunks.append(inline.data)
+            if not chunks:
                 raise RuntimeError("Gemini가 음성을 반환하지 않았습니다. TTS 모델/계정 권한을 확인하세요.")
-            data = base64.b64decode(encoded) if isinstance(encoded, str) else bytes(encoded)
-            if not data or len(data) % 2:
-                raise RuntimeError("Gemini TTS PCM 응답이 비어 있거나 손상되었습니다.")
-            with wave.open(str(path), "wb") as stream:
-                stream.setparams((1, 2, RATE, 0, "NONE", "not compressed"))
-                stream.writeframes(data)
+            data = b"".join(chunks)
+            if data.startswith(b"RIFF"):
+                path.write_bytes(data)
+            else:
+                if len(data) % 2 or not 8000 <= sample_rate <= 96000:
+                    raise RuntimeError("Gemini TTS PCM 응답이 비어 있거나 손상되었습니다.")
+                with wave.open(str(path), "wb") as stream:
+                    stream.setparams((1, 2, sample_rate, 0, "NONE", "not compressed"))
+                    stream.writeframes(data)
             return
         if self.provider == "openai":
             from openai import OpenAI
