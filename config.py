@@ -17,7 +17,7 @@ class Settings:
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_script_model: str = os.getenv(
         "GEMINI_SCRIPT_MODEL",
-        "gemini-2.5-flash-lite",
+        "gemini-3.5-flash-lite",
     )
     gemini_tts_model: str = os.getenv(
         "GEMINI_TTS_MODEL",
