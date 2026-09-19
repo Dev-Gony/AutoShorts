@@ -82,3 +82,49 @@ def test_typecast_synthesis_uses_smart_emotion(monkeypatch, tmp_path):
     assert request.language == "kor"
     assert request.prompt.emotion_type == "smart"
     assert output.read_bytes() == b"RIFFfake-wav"
+
+
+def test_voice_candidate_parser(monkeypatch):
+    import src.typecast_voices as voice_module
+    from src.typecast_voices import recommend_typecast_voices
+
+    class Response:
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return [
+                {
+                    "voice_id": "tc_one",
+                    "voice_name": "쇼츠남",
+                    "gender": "male",
+                    "age": "young_adult",
+                    "score": 0.98,
+                    "preview_url": "https://example.com/one.mp3",
+                },
+                {
+                    "voice_id": "tc_two",
+                    "voice_name": "쇼츠녀",
+                    "gender": "female",
+                    "age": "young_adult",
+                    "score": 0.95,
+                },
+            ]
+
+    monkeypatch.setattr(voice_module.requests, "get", lambda *args, **kwargs: Response())
+    candidates = recommend_typecast_voices("food_vlog", limit=2)
+    assert [item.voice_id for item in candidates] == ["tc_one", "tc_two"]
+    assert candidates[0].preview_url.endswith("one.mp3")
+    assert "쇼츠남" in candidates[0].label
+
+
+def test_explicit_typecast_voice_skips_recommendation(monkeypatch):
+    fake_settings = replace(
+        settings,
+        tts_provider="typecast",
+        typecast_api_key="test-key",
+        typecast_voice_id="",
+    )
+    monkeypatch.setattr(audio_module, "settings", fake_settings)
+
+    service = AudioService("food_vlog", 1.0, voice_id="tc_manual")
+    assert service._resolve_typecast_voice_id() == "tc_manual"
