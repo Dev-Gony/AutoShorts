@@ -8,6 +8,12 @@ from config import settings
 from src.voices import selected_profile
 
 
+SHORTS_KEYWORDS = (
+    "short", "youtube", "tiktok", "social", "content",
+    "video", "review", "entertainment", "vlog",
+)
+
+
 @dataclass(frozen=True)
 class TypecastVoiceCandidate:
     voice_id: str
@@ -16,80 +22,23 @@ class TypecastVoiceCandidate:
     age: str = ""
     score: float | None = None
     preview_url: str = ""
+    use_cases: tuple[str, ...] = ()
+    models: tuple[str, ...] = ()
 
     @property
     def label(self) -> str:
         details = [item for item in (self.gender, self.age) if item]
+        if self.use_cases:
+            details.append(", ".join(self.use_cases[:2]))
         meta = " · ".join(details)
         if self.score is not None:
             meta = f"{meta} · {self.score:.2f}" if meta else f"{self.score:.2f}"
         return f"{self.name}{' · ' + meta if meta else ''}"
 
-
-@dataclass(frozen=True)
-class PopularShortsVoice:
-    name: str
-    note: str
-    source_note: str
-    recommended_speed: float = 1.10
-
-
-POPULAR_SHORTS_VOICES = {
-    "박창수": PopularShortsVoice(
-        "박창수",
-        "충청도 청년 캐릭터. 음식·리뷰·유머 숏폼 쪽을 먼저 비교할 때 가장 우선.",
-        "Typecast 공식 콘텐츠에서 요리·유머·리뷰 채널 활용 사례가 소개됨.",
-        1.10,
-    ),
-    "발키리": PopularShortsVoice(
-        "발키리",
-        "강한 리액션과 밈 느낌. 차분한 리뷰보다 텐션 높은 쇼츠에 적합.",
-        "Typecast 공식 콘텐츠에서 유튜브·릴스·틱톡에서 유행한 분노 TTS로 소개됨.",
-        1.08,
-    ),
-    "찬구": PopularShortsVoice(
-        "찬구",
-        "밈·캐릭터성이 강한 타입. 정보 전달보다 개성 있는 숏폼에 우선 비교.",
-        "Typecast 공식 콘텐츠에서 대표 캐릭터 및 유행 밈 사례로 소개됨.",
-        1.10,
-    ),
-    "채린이": PopularShortsVoice(
-        "채린이",
-        "밝고 캐릭터성 있는 톤을 찾을 때 비교.",
-        "Typecast 공식 콘텐츠에서 유튜브·틱톡·릴스 활용 캐릭터로 언급됨.",
-        1.08,
-    ),
-    "호빈이": PopularShortsVoice(
-        "호빈이",
-        "가볍고 캐릭터성 있는 숏폼 톤 비교용.",
-        "Typecast 공식 콘텐츠에서 유튜브·틱톡·릴스 활용 캐릭터로 언급됨.",
-        1.10,
-    ),
-    "미스터 변사": PopularShortsVoice(
-        "미스터 변사",
-        "과장된 이야기 전달·상황 설명처럼 캐릭터성이 필요한 영상에 비교.",
-        "Typecast 공식 콘텐츠에서 개성 있는 TTS 캐릭터로 언급됨.",
-        1.06,
-    ),
-    "덕춘 할배": PopularShortsVoice(
-        "덕춘 할배",
-        "할아버지 캐릭터 톤. 밈이나 상황극형 쇼츠에 비교.",
-        "Typecast 공식 콘텐츠에서 개성 있는 TTS 캐릭터로 언급됨.",
-        1.08,
-    ),
-    "용식": PopularShortsVoice(
-        "용식",
-        "경상도 사투리 숏폼용으로 비교.",
-        "Typecast 공식 릴스 더빙 사투리 TOP3에 포함됨.",
-        1.10,
-    ),
-    "곽두필": PopularShortsVoice(
-        "곽두필",
-        "전라도 사투리 숏폼용으로 비교.",
-        "Typecast 공식 릴스 더빙 사투리 TOP3에 포함됨.",
-        1.10,
-    ),
-}
+    @property
+    def shorts_score(self) -> int:
+        haystack = " ".join(self.use_cases).lower()
+        return sum(1 for keyword in SHORTS_KEYWORDS if keyword in haystack)
 
 
 def _candidate_list(payload) -> list[dict]:
@@ -109,6 +58,19 @@ def _candidate_list(payload) -> list[dict]:
     return []
 
 
+def _model_versions(item: dict) -> tuple[str, ...]:
+    raw = item.get("models") or []
+    versions: list[str] = []
+    for model in raw:
+        if isinstance(model, str):
+            versions.append(model)
+        elif isinstance(model, dict):
+            version = model.get("version") or model.get("model")
+            if version:
+                versions.append(str(version))
+    return tuple(versions)
+
+
 def _candidate(item: dict) -> TypecastVoiceCandidate | None:
     voice_id = str(item.get("voice_id") or item.get("id") or "").strip()
     if not voice_id:
@@ -117,7 +79,6 @@ def _candidate(item: dict) -> TypecastVoiceCandidate | None:
         item.get("voice_name")
         or item.get("name")
         or item.get("display_name")
-        or item.get("character_name")
         or voice_id
     ).strip()
     score = item.get("score")
@@ -125,89 +86,43 @@ def _candidate(item: dict) -> TypecastVoiceCandidate | None:
         score = float(score) if score is not None else None
     except (TypeError, ValueError):
         score = None
+
+    raw_use_cases = item.get("use_cases") or item.get("use_case") or []
+    if isinstance(raw_use_cases, str):
+        use_cases = (raw_use_cases,)
+    else:
+        use_cases = tuple(str(value) for value in raw_use_cases if value)
+
     return TypecastVoiceCandidate(
         voice_id=voice_id,
         name=name,
         gender=str(item.get("gender") or "").replace("_", " "),
-        age=str(item.get("age") or "").replace("_", " "),
+        age=str(item.get("age") or item.get("age_group") or "").replace("_", " "),
         score=score,
         preview_url=str(item.get("preview_url") or item.get("sample_url") or ""),
+        use_cases=use_cases,
+        models=_model_versions(item),
     )
 
 
-def _normalize_name(value: str) -> str:
-    return "".join(value.lower().split()).replace("-", "").replace("_", "")
-
-
-def _find_exact(items: list[dict], name: str) -> TypecastVoiceCandidate | None:
-    wanted = _normalize_name(name)
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        candidate = _candidate(item)
-        if candidate and _normalize_name(candidate.name) == wanted:
-            return candidate
-    return None
-
-
-def resolve_popular_typecast_voice(name: str) -> TypecastVoiceCandidate:
-    if name not in POPULAR_SHORTS_VOICES:
-        raise ValueError(f"지원하지 않는 인기 쇼츠 보이스: {name}")
-
-    headers = {"X-API-KEY": settings.typecast_api_key}
-
-    # 1) The official voice-list endpoint is the safest way to identify a named
-    # character because we only accept an exact name match.
-    try:
-        response = requests.get(
-            f"{settings.typecast_api_base}/v3/voices",
-            headers=headers,
-            params={"model": settings.typecast_model},
-            timeout=(5, 20),
-        )
-        response.raise_for_status()
-        exact = _find_exact(_candidate_list(response.json()), name)
-        if exact:
-            return exact
-    except requests.RequestException:
-        # Fall through to recommendations; the UI will still fail closed if
-        # Typecast cannot return the exact named character.
-        pass
-
-    # 2) Recommendation search helps when the list endpoint is paginated and the
-    # named character is not on the first page. Never silently substitute a
-    # different character.
+def browse_typecast_voices(
+    search: str = "",
+    gender: str = "",
+    age: str = "",
+    limit: int = 40,
+) -> list[TypecastVoiceCandidate]:
+    """Return voices actually exposed by the user's current Typecast API account."""
     response = requests.get(
-        f"{settings.typecast_api_base}/v1/voices/recommendations",
-        headers=headers,
-        params={
-            "query": (
-                f"타입캐스트 공식 캐릭터 이름이 정확히 '{name}'인 한국어 보이스. "
-                "다른 캐릭터가 아니라 이 이름의 캐릭터를 찾아주세요."
-            )
-        },
-        timeout=(5, 20),
-    )
-    response.raise_for_status()
-    exact = _find_exact(_candidate_list(response.json()), name)
-    if exact:
-        return exact
-
-    raise RuntimeError(
-        f"현재 Typecast API에서 '{name}' 캐릭터의 정확한 voice_id를 확인하지 못했습니다. "
-        "해당 캐릭터가 현재 API 모델/계정에서 제공되는지 확인해주세요."
-    )
-
-
-def recommend_typecast_voices(preset: str, limit: int = 5) -> list[TypecastVoiceCandidate]:
-    _, profile = selected_profile(preset)
-    response = requests.get(
-        f"{settings.typecast_api_base}/v1/voices/recommendations",
+        f"{settings.typecast_api_base}/v2/voices",
         headers={"X-API-KEY": settings.typecast_api_key},
-        params={"query": profile.typecast_query},
-        timeout=(5, 20),
+        params={"model": settings.typecast_model},
+        timeout=(5, 25),
     )
     response.raise_for_status()
+
+    search_norm = search.strip().lower()
+    gender_norm = gender.strip().lower().replace("_", " ")
+    age_norm = age.strip().lower().replace("_", " ")
 
     result: list[TypecastVoiceCandidate] = []
     seen: set[str] = set()
@@ -217,11 +132,70 @@ def recommend_typecast_voices(preset: str, limit: int = 5) -> list[TypecastVoice
         candidate = _candidate(item)
         if candidate is None or candidate.voice_id in seen:
             continue
+        if candidate.models and settings.typecast_model not in candidate.models:
+            continue
+        if search_norm and search_norm not in candidate.name.lower() and all(
+            search_norm not in use_case.lower() for use_case in candidate.use_cases
+        ):
+            continue
+        if gender_norm and candidate.gender.lower() != gender_norm:
+            continue
+        if age_norm and candidate.age.lower() != age_norm:
+            continue
         seen.add(candidate.voice_id)
         result.append(candidate)
-        if len(result) >= limit:
-            break
 
-    if not result:
+    # Surface content/video-oriented voices first, then keep stable name ordering.
+    result.sort(key=lambda item: (-item.shorts_score, item.name.lower()))
+    return result[:limit]
+
+
+def recommend_typecast_voices(preset: str, limit: int = 5) -> list[TypecastVoiceCandidate]:
+    """Use recommendations, then verify each candidate against V2 voice details."""
+    _, profile = selected_profile(preset)
+    response = requests.get(
+        f"{settings.typecast_api_base}/v1/voices/recommendations",
+        headers={"X-API-KEY": settings.typecast_api_key},
+        params={"query": profile.typecast_query},
+        timeout=(5, 20),
+    )
+    response.raise_for_status()
+
+    raw_candidates: list[TypecastVoiceCandidate] = []
+    for item in _candidate_list(response.json()):
+        if isinstance(item, dict):
+            candidate = _candidate(item)
+            if candidate:
+                raw_candidates.append(candidate)
+
+    verified: list[TypecastVoiceCandidate] = []
+    for candidate in raw_candidates[:limit]:
+        try:
+            detail = requests.get(
+                f"{settings.typecast_api_base}/v2/voices/{candidate.voice_id}",
+                headers={"X-API-KEY": settings.typecast_api_key},
+                timeout=(5, 15),
+            )
+            detail.raise_for_status()
+            payload = detail.json()
+            if isinstance(payload, dict):
+                enriched = _candidate(payload) or candidate
+            else:
+                enriched = candidate
+            verified.append(TypecastVoiceCandidate(
+                voice_id=enriched.voice_id,
+                name=enriched.name,
+                gender=enriched.gender,
+                age=enriched.age,
+                score=candidate.score,
+                preview_url=enriched.preview_url,
+                use_cases=enriched.use_cases,
+                models=enriched.models,
+            ))
+        except requests.RequestException:
+            # Recommendation remains usable for TTS, but metadata may be sparse.
+            verified.append(candidate)
+
+    if not verified:
         raise RuntimeError("Typecast에서 추천 보이스 후보를 찾지 못했습니다.")
-    return result
+    return verified

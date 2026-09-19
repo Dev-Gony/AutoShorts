@@ -7,11 +7,7 @@ import streamlit as st
 from config import settings
 from src.pipeline import Pipeline, rerender
 from src.preview import preview_voice, safe_error
-from src.typecast_voices import (
-    POPULAR_SHORTS_VOICES,
-    recommend_typecast_voices,
-    resolve_popular_typecast_voice,
-)
+from src.typecast_voices import browse_typecast_voices, recommend_typecast_voices
 from src.voices import PROFILES, selected_profile
 
 st.set_page_config(page_title="AutoShorts", page_icon="🎬", layout="centered")
@@ -39,65 +35,55 @@ with st.sidebar:
 
     if settings.tts_provider == "typecast":
         st.caption(f"음성: Typecast · {settings.typecast_model}")
-        popular_tab, recommend_tab = st.tabs(["인기 쇼츠 보이스", "AI 추천"])
+        library_tab, recommend_tab = st.tabs(["실제 API 보이스", "AI 추천"])
 
-        with popular_tab:
-            popular_names = list(POPULAR_SHORTS_VOICES)
-            popular_name = st.radio(
-                "Typecast 인기 캐릭터",
-                popular_names,
-                key="popular_voice_name",
-            )
-            popular = POPULAR_SHORTS_VOICES[popular_name]
-            st.caption(popular.note)
-            st.caption(popular.source_note)
-            st.caption(f"권장 시작 속도: {popular.recommended_speed:.2f}")
+        with library_tab:
+            st.caption("현재 Typecast API 계정에서 실제로 제공되는 보이스만 불러옵니다.")
+            query = st.text_input("보이스/용도 검색", placeholder="review, video, vlog ...", key="voice_search")
 
-            if st.button(
-                "이 인기 보이스 불러오기",
-                disabled=not tts_ready,
-                key="load_popular_voice",
-            ):
+            if st.button("내 API 보이스 불러오기", disabled=not tts_ready, key="load_real_voices"):
                 try:
-                    with st.spinner(f"{popular_name} voice_id 확인 중"):
-                        candidate = resolve_popular_typecast_voice(popular_name)
-                    st.session_state["popular_candidate"] = candidate
-                    st.session_state["chosen_voice_id"] = candidate.voice_id
-                    st.session_state["chosen_voice_label"] = candidate.name
+                    with st.spinner("Typecast API 보이스 목록 확인 중"):
+                        voices = browse_typecast_voices(search=query, limit=40)
+                    st.session_state["real_typecast_voices"] = voices
                     st.session_state.pop("voice_preview", None)
                 except Exception as exc:
                     st.error(safe_error(exc))
 
-            candidate = st.session_state.get("popular_candidate")
-            if candidate and candidate.name == popular_name:
-                selected_voice_id = candidate.voice_id
-                st.success(f"선택됨: {candidate.label}")
-                if candidate.preview_url:
-                    st.audio(candidate.preview_url)
+            voices = st.session_state.get("real_typecast_voices", [])
+            if voices:
+                labels = {item.voice_id: item.label for item in voices}
+                picked_id = st.radio(
+                    "사용 가능한 보이스",
+                    [item.voice_id for item in voices],
+                    format_func=lambda vid: labels[vid],
+                    key="real_voice_id",
+                )
+                picked = next(item for item in voices if item.voice_id == picked_id)
+                if picked.use_cases:
+                    st.caption("용도: " + ", ".join(picked.use_cases))
+                if picked.preview_url:
+                    st.audio(picked.preview_url)
                     st.caption("Typecast 제공 기본 샘플")
 
-                if st.button(
-                    "이 보이스로 AutoShorts 문장 듣기",
-                    key="preview_popular_voice",
-                ):
+                if st.button("이 보이스 사용", key="use_real_voice"):
+                    st.session_state["chosen_voice_id"] = picked.voice_id
+                    st.session_state["chosen_voice_label"] = picked.name
+                    st.success(f"전체 영상 보이스로 선택: {picked.name}")
+
+                if st.button("이 보이스로 AutoShorts 문장 듣기", key="preview_real_voice"):
                     try:
                         with st.spinner("실제 AutoShorts 문장 생성 중"):
-                            path = preview_voice(
-                                preset,
-                                speed,
-                                voice_id=candidate.voice_id,
-                            )
+                            path = preview_voice(preset, speed, voice_id=picked.voice_id)
                         st.session_state["voice_preview"] = str(path)
                     except Exception as exc:
                         st.error(safe_error(exc))
+            else:
+                st.caption("버튼을 눌러 현재 계정에서 사용 가능한 보이스를 먼저 불러오세요.")
 
         with recommend_tab:
-            st.caption("인기 캐릭터가 마음에 안 들 때만 일반 추천 후보를 비교하세요.")
-            if st.button(
-                "쇼츠용 보이스 추천받기",
-                disabled=not tts_ready,
-                key="recommend_voices",
-            ):
+            st.caption("추천 API 후보는 보조 옵션입니다. 실제 보이스 목록에서 먼저 고르는 것을 권장합니다.")
+            if st.button("쇼츠용 보이스 추천받기", disabled=not tts_ready, key="recommend_voices"):
                 try:
                     with st.spinner("Typecast 추천 보이스 찾는 중"):
                         candidates = recommend_typecast_voices(preset, limit=5)
@@ -115,27 +101,20 @@ with st.sidebar:
                     format_func=lambda vid: labels[vid],
                     key="recommended_voice_id",
                 )
-                selected = next(
-                    item for item in candidates if item.voice_id == recommended_id
-                )
-                if st.button(
-                    "이 추천 보이스 사용",
-                    key="use_recommended_voice",
-                ):
+                selected = next(item for item in candidates if item.voice_id == recommended_id)
+                if selected.use_cases:
+                    st.caption("용도: " + ", ".join(selected.use_cases))
+                if selected.preview_url:
+                    st.audio(selected.preview_url)
+
+                if st.button("이 추천 보이스 사용", key="use_recommended_voice"):
                     st.session_state["chosen_voice_id"] = selected.voice_id
                     st.session_state["chosen_voice_label"] = selected.name
-                    st.session_state["popular_candidate"] = None
-                if st.button(
-                    "추천 보이스로 같은 문장 듣기",
-                    key="preview_recommended_voice",
-                ):
+
+                if st.button("추천 보이스로 같은 문장 듣기", key="preview_recommended_voice"):
                     try:
                         with st.spinner("선택 보이스 샘플 생성 중"):
-                            path = preview_voice(
-                                preset,
-                                speed,
-                                voice_id=selected.voice_id,
-                            )
+                            path = preview_voice(preset, speed, voice_id=selected.voice_id)
                         st.session_state["voice_preview"] = str(path)
                     except Exception as exc:
                         st.error(safe_error(exc))
@@ -166,7 +145,7 @@ with st.sidebar:
     if not script_ready:
         st.error(f"{settings.ai_provider.upper()} 대본 생성 API 키가 필요합니다.")
 
-    st.caption("인기 쇼츠 보이스를 먼저 비교하고, 마음에 드는 음성을 고른 뒤 전체 영상을 생성하세요.")
+    st.caption("실제 API 보이스를 비교하고 마음에 드는 음성을 선택한 뒤 전체 영상을 생성하세요.")
 
 url = st.text_input("블로그 URL", placeholder="https://blog.naver.com/...")
 st.caption("사진과 본문은 사용 권한이 있는 게시물을 입력하세요. 사진 매칭을 위해 축소 이미지도 선택한 AI로 전송합니다.")
