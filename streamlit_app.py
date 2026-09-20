@@ -1,41 +1,69 @@
 from __future__ import annotations
 
 from pathlib import Path
-from html import escape
 
 import streamlit as st
 
 from config import settings
 from src.pipeline import Pipeline, rerender
 from src.preview import preview_voice, safe_error
-from src.typecast_voices import browse_typecast_voices, top_korean_shorts_voices
-from src.voices import PROFILES, selected_profile
+from src.typecast_voices import top_korean_shorts_voices
 
 st.set_page_config(
     page_title="AutoShorts",
     page_icon="🎬",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="collapsed",
 )
 
 st.markdown(
     """
     <style>
-    .block-container {max-width: 1180px; padding-top: 2.5rem; padding-bottom: 4rem;}
-    [data-testid="stSidebar"] {display: none;}
-    .hero {padding: 1.2rem 0 1.8rem 0;}
-    .hero h1 {font-size: 2.6rem; margin-bottom: .35rem;}
-    .hero p {font-size: 1.05rem; color: #6b7280; margin: 0;}
-    .step-label {font-size: .82rem; font-weight: 700; color: #ef4444; letter-spacing: .04em;}
-    .voice-card {
-        border: 1px solid #e5e7eb; border-radius: 16px; padding: 14px 16px;
-        min-height: 150px; background: white;
+    .block-container {
+        max-width: 860px;
+        padding-top: 3rem;
+        padding-bottom: 5rem;
     }
-    .voice-card strong {font-size: 1.05rem;}
-    .voice-meta {color:#6b7280; font-size:.88rem; margin-top:.25rem;}
-    .chip {
-        display:inline-block; padding:3px 8px; margin:4px 4px 0 0;
-        border-radius:999px; background:#f3f4f6; font-size:.76rem; color:#4b5563;
+    [data-testid="stSidebar"] {display: none;}
+    .hero {
+        text-align: center;
+        padding: 1.5rem 0 2.2rem;
+    }
+    .hero h1 {
+        font-size: 3rem;
+        margin: 0 0 .55rem;
+        letter-spacing: -.04em;
+    }
+    .hero p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 1.08rem;
+    }
+    .step {
+        margin-top: 1.25rem;
+        font-size: .78rem;
+        font-weight: 800;
+        letter-spacing: .08em;
+        color: #ef4444;
+    }
+    .soft-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        padding: 18px 20px;
+        background: #fff;
+        margin-bottom: .75rem;
+    }
+    .soft-card strong {font-size: 1.02rem;}
+    .soft-card p {
+        color: #6b7280;
+        margin: .4rem 0 0;
+        font-size: .92rem;
+    }
+    .ready-box {
+        border-radius: 18px;
+        padding: 18px 20px;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
     }
     </style>
     """,
@@ -46,7 +74,7 @@ st.markdown(
     """
     <div class="hero">
       <h1>AutoShorts</h1>
-      <p>블로그 URL 하나로 사진·대본·음성·자막을 묶어 세로형 숏폼을 만듭니다.</p>
+      <p>블로그 링크 하나로 60초 안의 세로형 숏폼을 자동으로 만듭니다.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -56,180 +84,126 @@ script_ready = bool(settings.active_api_key)
 tts_ready = bool(settings.active_tts_api_key)
 can_generate = script_ready and tts_ready
 
-if not script_ready or not tts_ready:
-    missing = []
-    if not script_ready:
-        missing.append(f"{settings.ai_provider.upper()} 대본 API 키")
-    if not tts_ready:
-        missing.append(f"{settings.tts_provider.upper()} TTS API 키")
-    st.error("설정이 필요합니다: " + ", ".join(missing))
+STYLE_OPTIONS = {
+    "맛집·체험 리뷰": {
+        "preset": "food_vlog",
+        "description": "방문 경험과 핵심 포인트를 빠르게 보여주는 리뷰형",
+    },
+    "제품 리뷰": {
+        "preset": "bright",
+        "description": "제품의 특징과 사용감을 짧고 경쾌하게 설명",
+    },
+    "여행·일상": {
+        "preset": "bright",
+        "description": "사진 흐름을 살린 가볍고 편안한 브이로그형",
+    },
+    "정보형": {
+        "preset": "calm",
+        "description": "핵심 정보를 차분하고 또렷하게 전달",
+    },
+}
 
-# STEP 1
-st.markdown('<div class="step-label">STEP 1 · SOURCE</div>', unsafe_allow_html=True)
-st.subheader("블로그 링크를 넣어주세요")
+if not can_generate:
+    st.info("현재 로컬 개발 설정에서 음성/대본 API 연결을 확인해주세요.")
+
+st.markdown('<div class="step">STEP 1</div>', unsafe_allow_html=True)
+st.subheader("블로그 링크")
 url = st.text_input(
     "블로그 URL",
     placeholder="https://blog.naver.com/...",
     label_visibility="collapsed",
 )
-st.caption("현재 네이버·티스토리·일반 HTML을 지원합니다. 사용 권한이 있는 게시물을 입력하세요.")
+st.caption("네이버 · 티스토리 · 일반 웹페이지를 지원합니다.")
 
 st.divider()
 
-# STEP 2
-st.markdown('<div class="step-label">STEP 2 · VOICE</div>', unsafe_allow_html=True)
-st.subheader("쇼츠에 어울리는 목소리를 고르세요")
-st.caption("한국어 원어민 느낌의 쇼츠·릴스·맛집 리뷰 보이스를 우선 추천합니다. 미리듣기도 모두 한국어 문장으로 생성합니다.")
-
-top_col, settings_col = st.columns([3, 1])
-
-with settings_col:
-    with st.expander("음성 설정", expanded=True):
-        default, _ = selected_profile()
-        names = list(PROFILES)
-        preset = st.selectbox(
-            "말투",
-            names,
-            index=names.index(default),
-            format_func=lambda key: PROFILES[key].label,
-        )
-        speed = st.slider("말하기 속도", .90, 1.20, 1.10, .02)
-        st.caption(f"TTS: Typecast · {settings.typecast_model}")
-
-with top_col:
-    if "shorts_top_voices" not in st.session_state and tts_ready:
-        try:
-            with st.spinner("쇼츠용 보이스를 고르는 중"):
-                st.session_state["shorts_top_voices"] = top_korean_shorts_voices(preset=preset, limit=8)
-        except Exception as exc:
-            st.error(safe_error(exc))
-            st.session_state["shorts_top_voices"] = []
-
-    voices = st.session_state.get("shorts_top_voices", [])
-    if st.button("추천 보이스 새로고침", disabled=not tts_ready):
-        try:
-            with st.spinner("Typecast 보이스 다시 불러오는 중"):
-                st.session_state["shorts_top_voices"] = top_korean_shorts_voices(preset=preset, limit=8)
-            st.rerun()
-        except Exception as exc:
-            st.error(safe_error(exc))
-
-selected_voice_id = settings.typecast_voice_id or st.session_state.get("chosen_voice_id")
-selected_voice_label = st.session_state.get("chosen_voice_label", "")
-
-GENDER_KO = {
-    "male": "남성",
-    "female": "여성",
-    "neutral": "중성",
-}
-AGE_KO = {
-    "young adult": "청년",
-    "middle age": "중년",
-    "teenager": "10대",
-    "child": "아동",
-    "senior": "시니어",
-}
-
-if voices:
-    cols = st.columns(4)
-    for index, voice in enumerate(voices):
-        with cols[index % 4]:
-            tags = "".join(
-                f'<span class="chip">{escape(tag)}</span>'
-                for tag in voice.shorts_tags
-            )
-            gender = GENDER_KO.get(voice.gender.lower(), voice.gender)
-            age = AGE_KO.get(voice.age.lower(), voice.age)
-            meta = " · ".join(x for x in (gender, age) if x)
-            st.markdown(
-                f"""
-                <div class="voice-card">
-                  <strong>#{index + 1} {escape(voice.name)}</strong>
-                  <div class="voice-meta">{meta or "Typecast API voice"}</div>
-                  <div>{tags}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            if st.button(
-                "한국어 미리듣기",
-                key=f"preview_top_{voice.voice_id}",
-                use_container_width=True,
-            ):
-                try:
-                    with st.spinner("한국어 샘플 생성 중"):
-                        path = preview_voice(preset, speed, voice_id=voice.voice_id)
-                    st.session_state["card_voice_preview"] = str(path)
-                    st.session_state["card_voice_preview_id"] = voice.voice_id
-                except Exception as exc:
-                    st.error(safe_error(exc))
-            if st.session_state.get("card_voice_preview_id") == voice.voice_id:
-                st.audio(st.session_state["card_voice_preview"])
-            if st.button(
-                "선택",
-                key=f"pick_top_{voice.voice_id}",
-                type="primary" if selected_voice_id == voice.voice_id else "secondary",
-                use_container_width=True,
-            ):
-                st.session_state["chosen_voice_id"] = voice.voice_id
-                st.session_state["chosen_voice_label"] = voice.name
-                selected_voice_id = voice.voice_id
-                selected_voice_label = voice.name
-                st.session_state.pop("voice_preview", None)
-                st.session_state.pop("card_voice_preview", None)
-                st.session_state.pop("card_voice_preview_id", None)
-                st.rerun()
-
-    if selected_voice_id:
-        st.success(f"선택한 보이스: {selected_voice_label or selected_voice_id}")
-        if st.button("선택한 목소리로 한국어 4초 미리듣기", use_container_width=False):
-            try:
-                with st.spinner("미리듣기 생성 중"):
-                    path = preview_voice(preset, speed, voice_id=selected_voice_id)
-                st.session_state["voice_preview"] = str(path)
-            except Exception as exc:
-                st.error(safe_error(exc))
-        if st.session_state.get("voice_preview"):
-            st.audio(st.session_state["voice_preview"])
-else:
-    st.warning("현재 계정에서 쇼츠 후보 보이스를 불러오지 못했습니다.")
-
-with st.expander("전체 Typecast 보이스 보기 · 고급"):
-    search = st.text_input("검색", placeholder="voice name, review, tiktok ...")
-    if st.button("전체 보이스 검색"):
-        try:
-            st.session_state["all_typecast_voices"] = browse_typecast_voices(
-                search=search,
-                limit=80,
-            )
-        except Exception as exc:
-            st.error(safe_error(exc))
-    all_voices = st.session_state.get("all_typecast_voices", [])
-    if all_voices:
-        labels = {voice.voice_id: voice.label for voice in all_voices}
-        advanced_id = st.selectbox(
-            "전체 보이스",
-            [voice.voice_id for voice in all_voices],
-            format_func=lambda vid: labels[vid],
-        )
-        if st.button("이 보이스 선택"):
-            picked = next(v for v in all_voices if v.voice_id == advanced_id)
-            st.session_state["chosen_voice_id"] = picked.voice_id
-            st.session_state["chosen_voice_label"] = picked.name
-            st.session_state.pop("voice_preview", None)
-            st.rerun()
+st.markdown('<div class="step">STEP 2</div>', unsafe_allow_html=True)
+st.subheader("영상 스타일")
+style_name = st.radio(
+    "영상 스타일",
+    list(STYLE_OPTIONS),
+    horizontal=True,
+    label_visibility="collapsed",
+)
+style = STYLE_OPTIONS[style_name]
+preset = style["preset"]
+st.markdown(
+    f"""
+    <div class="soft-card">
+      <strong>{style_name}</strong>
+      <p>{style["description"]}</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.divider()
 
-# STEP 3
-st.markdown('<div class="step-label">STEP 3 · GENERATE</div>', unsafe_allow_html=True)
-st.subheader("숏폼 생성")
-ready = can_generate and bool(url.strip()) and bool(selected_voice_id)
+st.markdown('<div class="step">STEP 3</div>', unsafe_allow_html=True)
+st.subheader("목소리")
+st.markdown(
+    """
+    <div class="soft-card">
+      <strong>자연스러운 한국어 쇼츠 음성</strong>
+      <p>서비스 기본 목소리 1개를 사용합니다. 음성 엔진이나 모델명은 사용자가 신경 쓰지 않아도 됩니다.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-summary_cols = st.columns(3)
-summary_cols[0].metric("소스", "블로그 URL" if url.strip() else "미입력")
-summary_cols[1].metric("보이스", selected_voice_label or "미선택")
-summary_cols[2].metric("목표 길이", "60초 미만")
+speed = st.slider(
+    "말하기 속도",
+    min_value=.96,
+    max_value=1.16,
+    value=1.08,
+    step=.02,
+    help="쇼츠에 맞게 기본값을 조금 빠르게 설정했습니다.",
+)
+
+def resolve_service_voice() -> str:
+    existing = st.session_state.get("service_voice_id")
+    existing_preset = st.session_state.get("service_voice_preset")
+    if existing and existing_preset == preset:
+        return existing
+
+    candidates = top_korean_shorts_voices(preset=preset, limit=1)
+    if not candidates:
+        raise RuntimeError("현재 사용할 수 있는 한국어 음성을 찾지 못했습니다.")
+
+    voice = candidates[0]
+    st.session_state["service_voice_id"] = voice.voice_id
+    st.session_state["service_voice_preset"] = preset
+    st.session_state["service_voice_name"] = voice.name
+    return voice.voice_id
+
+
+if st.button("목소리 미리듣기", disabled=not tts_ready):
+    try:
+        with st.spinner("한국어 음성 샘플을 만드는 중"):
+            voice_id = resolve_service_voice()
+            path = preview_voice(preset, speed, voice_id=voice_id)
+        st.session_state["service_preview"] = str(path)
+    except Exception as exc:
+        st.error(safe_error(exc))
+
+if st.session_state.get("service_preview"):
+    st.audio(st.session_state["service_preview"])
+
+st.divider()
+
+st.markdown('<div class="step">STEP 4</div>', unsafe_allow_html=True)
+st.subheader("숏폼 만들기")
+
+ready = can_generate and bool(url.strip())
+st.markdown(
+    f"""
+    <div class="ready-box">
+      <strong>{style_name}</strong><br>
+      <span>목표 길이: 60초 미만 · 세로형 1080×1920 · 한국어 음성</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if st.button(
     "숏폼 만들기",
@@ -245,12 +219,14 @@ if st.button(
         status.info(message)
 
     try:
+        voice_id = resolve_service_voice()
         result = Pipeline(
             progress_callback=on_progress,
             preset=preset,
             speed=speed,
-            voice_id=selected_voice_id,
+            voice_id=voice_id,
         ).run(url.strip())
+
         st.session_state["result"] = {
             "video": str(result.video_path),
             "run": str(result.work_dir),
@@ -265,26 +241,31 @@ if st.button(
 result = st.session_state.get("result")
 if result:
     st.divider()
-    st.markdown('<div class="step-label">RESULT</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step">RESULT</div>', unsafe_allow_html=True)
     st.subheader("완성된 숏폼")
-    result_left, result_right = st.columns([2, 1])
-    with result_left:
-        st.video(result["video"])
-    with result_right:
-        st.metric("처리 시간", f"{result['elapsed']:.1f}초")
-        with st.expander("생성된 대본"):
+    st.video(result["video"])
+
+    info_a, info_b = st.columns(2)
+    info_a.metric("처리 시간", f"{result['elapsed']:.1f}초")
+    info_b.metric("영상 형식", "1080 × 1920")
+
+    video = Path(result["video"])
+    st.download_button(
+        "MP4 저장",
+        video.read_bytes(),
+        file_name=video.name,
+        mime="video/mp4",
+        use_container_width=True,
+    )
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        with st.expander("대본 보기"):
             st.write(result["script"])
-        video = Path(result["video"])
-        st.download_button(
-            "MP4 저장",
-            video.read_bytes(),
-            file_name=video.name,
-            mime="video/mp4",
-            use_container_width=True,
-        )
-        if st.button("화면만 다시 렌더링", use_container_width=True):
+    with col_b:
+        if st.button("화면만 다시 만들기", use_container_width=True):
             try:
-                with st.spinner("API 호출 없이 화면 다시 만드는 중"):
+                with st.spinner("화면을 다시 구성하는 중"):
                     result["video"] = str(rerender(result["run"]))
                 st.rerun()
             except Exception as exc:
