@@ -32,10 +32,12 @@ st.markdown(
         radial-gradient(circle at 92% 8%, rgba(89,126,247,.09), transparent 24%),
         #ffffff;
     }
+    header[data-testid="stHeader"] {display:none;}
+    #MainMenu, footer {visibility:hidden;}
     .block-container {
       max-width: 1200px;
-      padding-top: 1.8rem;
-      padding-bottom: 4rem;
+      padding-top: 2.8rem;
+      padding-bottom: 4.5rem;
     }
     [data-testid="stSidebar"] {display: none;}
 
@@ -43,7 +45,9 @@ st.markdown(
       display:flex;
       align-items:center;
       justify-content:space-between;
-      padding:.35rem 0 1.2rem;
+      min-height:48px;
+      padding:.15rem 0 1.45rem;
+      margin-bottom:.2rem;
     }
     .brand {
       display:flex;
@@ -208,16 +212,36 @@ st.markdown(
       padding:20px;
       box-shadow:0 10px 32px rgba(30,35,45,.045);
     }
-    .style-card {
-      border:1px solid var(--line);
-      background:#fff;
+    .st-key-style_food button,
+    .st-key-style_product button,
+    .st-key-style_travel button,
+    .st-key-style_info button {
+      width:100%;
+      min-height:126px;
       border-radius:18px;
-      padding:15px 16px;
-      min-height:118px;
+      padding:16px 17px;
+      white-space:normal;
+      text-align:left;
+      justify-content:flex-start;
+      align-items:flex-start;
+      line-height:1.55;
+      font-size:.91rem;
+      box-shadow:0 7px 22px rgba(30,35,45,.035);
+      transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
     }
-    .style-card b {font-size:1rem;color:var(--ink);}
-    .style-card p {margin:.45rem 0 0;color:var(--muted);font-size:.86rem;line-height:1.5;}
-    .style-icon {font-size:1.2rem;margin-bottom:.55rem;}
+    .st-key-style_food button:hover,
+    .st-key-style_product button:hover,
+    .st-key-style_travel button:hover,
+    .st-key-style_info button:hover {
+      transform:translateY(-2px);
+      box-shadow:0 12px 28px rgba(30,35,45,.08);
+      border-color:#ff9e9f;
+    }
+    .style-help {
+      margin-top:.7rem;
+      color:#858c99;
+      font-size:.78rem;
+    }
     .voice-feature {
       display:flex;gap:.8rem;align-items:center;
       border:1px solid var(--line);border-radius:18px;padding:15px 16px;background:#fff;
@@ -248,6 +272,21 @@ st.markdown(
     }
     .ready-box strong {font-size:1rem;}
     .ready-box span {color:#687183;font-size:.85rem;line-height:1.5;}
+
+    .st-key-create_panel {
+      border:1px solid #e6e9ef;
+      background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(248,250,255,.96));
+      border-radius:24px;
+      padding:22px 22px 24px;
+      box-shadow:0 14px 34px rgba(30,35,45,.055);
+    }
+    .st-key-create_panel .ready-box {margin-bottom:1rem;}
+    .st-key-create_panel [data-testid="stButton"] {margin-top:.55rem;}
+    .st-key-create_panel [data-testid="stButton"] button {
+      min-height:48px;
+      border-radius:14px;
+      font-weight:800;
+    }
 
     .st-key-hero_preview {
       min-height:500px;
@@ -293,6 +332,8 @@ st.markdown(
       .section-head {display:block;}
       .section-copy {max-width:none;text-align:left;margin-top:.5rem;}
       .st-key-hero_preview {min-height:auto;margin-top:1rem;}
+      .block-container {padding-top:1.6rem;padding-left:1rem;padding-right:1rem;}
+      .st-key-create_panel {padding:17px 16px 19px;}
     }
     </style>
     """,
@@ -318,21 +359,25 @@ STYLE_OPTIONS = {
         "preset": "food_vlog",
         "icon": "🍜",
         "description": "방문 경험과 핵심 포인트를 빠르게 보여주는 리뷰형",
+        "key": "style_food",
     },
     "제품 리뷰": {
         "preset": "bright",
         "icon": "📦",
         "description": "제품의 특징과 사용감을 짧고 경쾌하게 설명",
+        "key": "style_product",
     },
     "여행·일상": {
         "preset": "bright",
         "icon": "🧳",
         "description": "사진 흐름을 살린 가볍고 편안한 브이로그형",
+        "key": "style_travel",
     },
     "정보형": {
         "preset": "calm",
         "icon": "💡",
         "description": "핵심 정보를 차분하고 또렷하게 전달",
+        "key": "style_info",
     },
 }
 
@@ -457,29 +502,37 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-style_name = st.radio(
-    "영상 스타일",
-    list(STYLE_OPTIONS),
-    horizontal=True,
-    label_visibility="collapsed",
-)
-style = STYLE_OPTIONS[style_name]
-preset = style["preset"]
+if "style_name" not in st.session_state:
+    st.session_state["style_name"] = "맛집·체험"
 
-style_cols = st.columns(4)
+def choose_style(name: str) -> None:
+    st.session_state["style_name"] = name
+    st.session_state.pop("service_voice_id", None)
+    st.session_state.pop("service_voice_preset", None)
+    st.session_state.pop("service_voice_name", None)
+    st.session_state.pop("service_preview", None)
+
+style_name = st.session_state["style_name"]
+
+style_cols = st.columns(4, gap="small")
 for idx, (name, option) in enumerate(STYLE_OPTIONS.items()):
     with style_cols[idx]:
         active = name == style_name
-        st.markdown(
-            f"""
-            <div class="style-card" style="border-color:{'#ffb1b1' if active else '#e8ebf0'};background:{'#fff8f8' if active else '#fff'};">
-              <div class="style-icon">{option["icon"]}</div>
-              <b>{name}</b>
-              <p>{option["description"]}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.button(
+            f'{option["icon"]}  {name}  ·  {option["description"]}',
+            key=option["key"],
+            type="primary" if active else "secondary",
+            use_container_width=True,
+            on_click=choose_style,
+            args=(name,),
         )
+
+style = STYLE_OPTIONS[style_name]
+preset = style["preset"]
+st.markdown(
+    '<div class="style-help">카드를 직접 눌러 스타일을 바꿀 수 있어요. 선택한 스타일에 맞춰 대본 톤과 사진 흐름이 달라집니다.</div>',
+    unsafe_allow_html=True,
+)
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="section">', unsafe_allow_html=True)
@@ -578,48 +631,55 @@ st.markdown(
 )
 
 ready = can_generate and bool(url.strip())
-st.markdown(
-    f"""
-    <div class="ready-box">
-      <strong>{style_name} · 한국어 음성</strong><br>
-      <span>60초 미만 · 1080×1920 · 사진 자동 구성 · 대본/자막 자동 생성</span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
-if st.button(
-    "쇼츠 만들기",
-    type="primary",
-    use_container_width=True,
-    disabled=not ready,
-):
-    progress = st.progress(0.0)
-    status = st.empty()
+with st.container(key="create_panel"):
+    st.markdown(
+        f"""
+        <div class="ready-box">
+          <strong>{style_name} · 한국어 음성</strong><br>
+          <span>60초 미만 · 1080×1920 · 사진 자동 구성 · 대본/자막 자동 생성</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    def on_progress(step, total, message):
-        progress.progress(min((step - 1) / total, .99))
-        status.info(message)
+    if not url.strip():
+        st.caption("블로그 링크를 입력하면 생성 버튼이 활성화됩니다.")
 
-    try:
-        voice_id = resolve_service_voice()
-        result = Pipeline(
-            progress_callback=on_progress,
-            preset=preset,
-            speed=speed,
-            voice_id=voice_id,
-        ).run(url.strip())
+    if st.button(
+        "쇼츠 만들기",
+        type="primary",
+        use_container_width=True,
+        disabled=not ready,
+        key="create_shorts",
+    ):
+        progress = st.progress(0.0)
+        status = st.empty()
 
-        st.session_state["result"] = {
-            "video": str(result.video_path),
-            "run": str(result.work_dir),
-            "script": result.short_script.script,
-            "elapsed": result.elapsed_seconds,
-        }
-        progress.progress(1.0)
-        status.success("영상 생성 완료")
-    except Exception as exc:
-        status.error(safe_error(exc))
+        def on_progress(step, total, message):
+            progress.progress(min((step - 1) / total, .99))
+            status.info(message)
+
+        try:
+            voice_id = resolve_service_voice()
+            result = Pipeline(
+                progress_callback=on_progress,
+                preset=preset,
+                speed=speed,
+                voice_id=voice_id,
+            ).run(url.strip())
+
+            st.session_state["result"] = {
+                "video": str(result.video_path),
+                "run": str(result.work_dir),
+                "script": result.short_script.script,
+                "elapsed": result.elapsed_seconds,
+            }
+            progress.progress(1.0)
+            status.success("영상 생성 완료")
+            st.rerun()
+        except Exception as exc:
+            status.error(safe_error(exc))
 
 st.markdown('</div>', unsafe_allow_html=True)
 
