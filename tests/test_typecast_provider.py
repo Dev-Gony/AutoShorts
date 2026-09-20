@@ -245,3 +245,29 @@ def test_shorts_score_is_suitability_not_api_popularity():
     )
     assert voice.shorts_score > 0
     assert "TikTok/Reels/Shorts" in voice.shorts_tags
+
+
+def test_localized_typecast_name_prefers_korean():
+    from src.typecast_voices import _candidate
+
+    candidate = _candidate({
+        "voice_id": "voice_1",
+        "voice_name": {"eng": "Dylan", "kor": "딜런"},
+        "gender": "male",
+        "age": "young_adult",
+        "use_cases": [{"eng": "TikTok/Reels/Shorts", "kor": "틱톡/릴스/쇼츠"}],
+    })
+    assert candidate is not None
+    assert candidate.name == "딜런"
+    assert candidate.use_cases == ("틱톡/릴스/쇼츠",)
+
+
+def test_localized_typecast_name_falls_back_to_english():
+    from src.typecast_voices import _candidate
+
+    candidate = _candidate({
+        "voice_id": "voice_2",
+        "voice_name": {"eng": "Walter"},
+    })
+    assert candidate is not None
+    assert candidate.name == "Walter"
