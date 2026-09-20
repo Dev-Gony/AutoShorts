@@ -103,7 +103,19 @@ def test_no_visual_fallback(tmp_path):
 
 
 def valid_plan():
-    return {"title": "한 그릇 리뷰", "scenes": [{"text": "골목에서 한 그릇을 찾았어요.", "emphasis": "한 그릇", "image_index": 0} for _ in range(4)]}
+    texts = [
+        "골목에서 한 그릇을 찾았어요.",
+        "대표 메뉴부터 먼저 볼게요.",
+        "국물의 특징이 눈에 들어와요.",
+        "마지막엔 분위기도 짚어볼게요.",
+    ]
+    return {
+        "title": "한 그릇 리뷰",
+        "scenes": [
+            {"text": text, "emphasis": "", "image_index": 0}
+            for text in texts
+        ],
+    }
 
 
 def test_plan_keeps_scene_mapping_and_original_text():
