@@ -191,9 +191,9 @@ def test_browse_real_typecast_voices_filters_model(monkeypatch):
     assert [voice.voice_id for voice in voices] == ["new_voice"]
 
 
-def test_top_shorts_voices_ranks_shortform_use_cases(monkeypatch):
+def test_browse_typecast_voices_ranks_shortform_use_cases(monkeypatch):
     import src.typecast_voices as voice_module
-    from src.typecast_voices import top_shorts_voices
+    from src.typecast_voices import browse_typecast_voices
 
     class Response:
         def raise_for_status(self):
@@ -226,7 +226,7 @@ def test_top_shorts_voices_ranks_shortform_use_cases(monkeypatch):
             }
 
     monkeypatch.setattr(voice_module.requests, "get", lambda *args, **kwargs: Response())
-    voices = top_shorts_voices(limit=3)
+    voices = browse_typecast_voices(limit=3)
     assert [voice.voice_id for voice in voices] == [
         "voice_shorts",
         "voice_review",
