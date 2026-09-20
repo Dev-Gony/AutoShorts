@@ -517,6 +517,16 @@ def resolve_service_voice() -> str:
 with st.container(border=True):
     voice_col, control_col = st.columns([1.38, .62], gap="large", vertical_alignment="center")
 
+    with control_col:
+        speed = st.slider(
+            "말하기 속도",
+            min_value=.96,
+            max_value=1.16,
+            value=1.08,
+            step=.02,
+            help="쇼츠에 맞게 기본값을 조금 빠르게 설정했습니다.",
+        )
+
     with voice_col:
         st.markdown(
             """
@@ -538,16 +548,6 @@ with st.container(border=True):
 
         if st.session_state.get("service_preview"):
             st.audio(st.session_state["service_preview"])
-
-    with control_col:
-        speed = st.slider(
-            "말하기 속도",
-            min_value=.96,
-            max_value=1.16,
-            value=1.08,
-            step=.02,
-            help="쇼츠에 맞게 기본값을 조금 빠르게 설정했습니다.",
-        )
 
 st.markdown('</div>', unsafe_allow_html=True)
 
