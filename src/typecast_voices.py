@@ -231,11 +231,62 @@ def browse_typecast_voices(
     return result[:limit]
 
 
-def top_shorts_voices(limit: int = 8) -> list[TypecastVoiceCandidate]:
-    """Rank available API voices by Shorts suitability, not by undisclosed popularity."""
-    voices = browse_typecast_voices(limit=200)
-    ranked = [voice for voice in voices if voice.shorts_score > 0]
-    return (ranked or voices)[:limit]
+def top_korean_shorts_voices(
+    preset: str = "food_vlog",
+    limit: int = 8,
+) -> list[TypecastVoiceCandidate]:
+    """Recommend Korean-native-style short-form voices, then enrich from the API library."""
+    _, profile = selected_profile(preset)
+    query = (
+        "한국어 원어민처럼 자연스럽게 말하는 한국인 크리에이터 음성. "
+        "한국 유튜브 쇼츠, 릴스, 맛집 리뷰와 체험 리뷰에 잘 어울리고, "
+        "국어책 낭독체나 외국인 억양이 아니라 실제 한국인이 친구에게 말하듯 "
+        "빠르고 자연스러운 대화체. "
+        + profile.typecast_query
+    )
+    response = requests.get(
+        f"{settings.typecast_api_base}/v1/voices/recommendations",
+        headers={"X-API-KEY": settings.typecast_api_key},
+        params={"query": query},
+        timeout=(5, 20),
+    )
+    response.raise_for_status()
+
+    library = {
+        voice.voice_id: voice
+        for voice in browse_typecast_voices(limit=300)
+    }
+
+    result: list[TypecastVoiceCandidate] = []
+    seen: set[str] = set()
+    for item in _candidate_list(response.json()):
+        if not isinstance(item, dict):
+            continue
+        recommended = _candidate(item)
+        if recommended is None or recommended.voice_id in seen:
+            continue
+        seen.add(recommended.voice_id)
+        detail = library.get(recommended.voice_id)
+        if detail:
+            recommended = TypecastVoiceCandidate(
+                voice_id=detail.voice_id,
+                name=detail.name,
+                gender=detail.gender,
+                age=detail.age,
+                score=recommended.score,
+                preview_url=detail.preview_url,
+                use_cases=detail.use_cases,
+                models=detail.models,
+            )
+        result.append(recommended)
+        if len(result) >= limit:
+            break
+
+    if not result:
+        voices = browse_typecast_voices(limit=200)
+        ranked = [voice for voice in voices if voice.shorts_score > 0]
+        return (ranked or voices)[:limit]
+    return result
 
 
 def recommend_typecast_voices(preset: str, limit: int = 5) -> list[TypecastVoiceCandidate]:
