@@ -271,3 +271,46 @@ def test_localized_typecast_name_falls_back_to_english():
     })
     assert candidate is not None
     assert candidate.name == "Walter"
+
+
+def test_top_korean_shorts_voices_uses_korean_native_query(monkeypatch):
+    import src.typecast_voices as voice_module
+    from src.typecast_voices import top_korean_shorts_voices
+
+    calls = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return self.payload
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        if "/recommendations" in url:
+            return Response([
+                {"voice_id": "ko_voice", "voice_name": {"kor": "한국쇼츠"}, "score": 0.99}
+            ])
+        return Response({
+            "voices": [
+                {
+                    "voice_id": "ko_voice",
+                    "voice_name": {"kor": "한국쇼츠"},
+                    "gender": "male",
+                    "age": "young_adult",
+                    "use_cases": [{"kor": "틱톡/릴스/쇼츠"}],
+                    "models": [{"version": "ssfm-v30"}],
+                }
+            ]
+        })
+
+    monkeypatch.setattr(voice_module.requests, "get", fake_get)
+    voices = top_korean_shorts_voices("food_vlog", limit=1)
+
+    recommendation = next(call for call in calls if "/recommendations" in call[0])
+    query = recommendation[1]["params"]["query"]
+    assert "한국어 원어민" in query
+    assert "외국인 억양" in query
+    assert voices[0].name == "한국쇼츠"
