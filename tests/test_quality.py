@@ -136,3 +136,25 @@ def test_invalid_image_index_is_not_hallucinated():
 def test_fake_image_bytes_are_rejected(tmp_path):
     with pytest.raises(OSError):
         normalize_image(b"this is not a photo", tmp_path / "bad.jpg")
+
+
+def test_first_scene_hook_must_be_short():
+    data = valid_plan()
+    data["scenes"][0]["text"] = "첫 장면은 아주 길게 설명부터 시작하면 안 되는 문장이에요"
+    with pytest.raises(ScriptGenerationError, match="첫 장면"):
+        parse_plan(json.dumps(data, ensure_ascii=False), 420, 1)
+
+
+def test_duplicate_scene_text_is_rejected():
+    data = valid_plan()
+    data["scenes"][1]["text"] = data["scenes"][0]["text"]
+    with pytest.raises(ScriptGenerationError, match="반복"):
+        parse_plan(json.dumps(data, ensure_ascii=False), 420, 1)
+
+
+def test_caption_sits_above_bottom_ui_safe_zone():
+    card = make_caption("국물부터 한입 먹어볼게요.", width=1080, height=1920)
+    try:
+        assert card.y + card.image.height <= 1920 * .74
+    finally:
+        card.image.close()
