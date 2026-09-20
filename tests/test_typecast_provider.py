@@ -189,3 +189,59 @@ def test_browse_real_typecast_voices_filters_model(monkeypatch):
     monkeypatch.setattr(voice_module.requests, "get", lambda *args, **kwargs: Response())
     voices = browse_typecast_voices(limit=10)
     assert [voice.voice_id for voice in voices] == ["new_voice"]
+
+
+def test_top_shorts_voices_ranks_shortform_use_cases(monkeypatch):
+    import src.typecast_voices as voice_module
+    from src.typecast_voices import top_shorts_voices
+
+    class Response:
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return {
+                "voices": [
+                    {
+                        "voice_id": "voice_story",
+                        "voice_name": "Story",
+                        "age": "young_adult",
+                        "use_cases": ["Audiobook", "Storytelling"],
+                        "models": [{"version": "ssfm-v30"}],
+                    },
+                    {
+                        "voice_id": "voice_shorts",
+                        "voice_name": "Shorts",
+                        "age": "young_adult",
+                        "use_cases": ["TikTok/Reels/Shorts", "Conversational"],
+                        "models": [{"version": "ssfm-v30"}],
+                    },
+                    {
+                        "voice_id": "voice_review",
+                        "voice_name": "Review",
+                        "age": "middle_age",
+                        "use_cases": ["Review", "Video"],
+                        "models": [{"version": "ssfm-v30"}],
+                    },
+                ]
+            }
+
+    monkeypatch.setattr(voice_module.requests, "get", lambda *args, **kwargs: Response())
+    voices = top_shorts_voices(limit=3)
+    assert [voice.voice_id for voice in voices] == [
+        "voice_shorts",
+        "voice_review",
+        "voice_story",
+    ]
+
+
+def test_shorts_score_is_suitability_not_api_popularity():
+    from src.typecast_voices import TypecastVoiceCandidate
+
+    voice = TypecastVoiceCandidate(
+        voice_id="v1",
+        name="Example",
+        age="young adult",
+        use_cases=("TikTok/Reels/Shorts", "Conversational"),
+    )
+    assert voice.shorts_score > 0
+    assert "TikTok/Reels/Shorts" in voice.shorts_tags
