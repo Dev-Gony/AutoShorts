@@ -107,12 +107,12 @@ def make_caption(
     if missing:
         raise CaptionLayoutError("Font cannot render: " + " ".join(sorted(missing)))
     scale = width / 1080
-    # Keep the rightmost 140px and bottom 460px free at 1080x1920.
-    max_width = int(width * .80)
-    pad = max(10, round(28 * scale))
-    stroke = max(1, round(2 * scale))
-    start_size = round((84 if title else 78) * scale)
-    min_size = max(12, round(48 * scale))
+    # Leave space for Shorts controls on the right and bottom.
+    max_width = int(width * (.80 if title else .82))
+    pad = max(10, round((24 if title else 22) * scale))
+    stroke = max(1, round((2 if title else 3) * scale))
+    start_size = round((82 if title else 74) * scale)
+    min_size = max(12, round((46 if title else 44) * scale))
     selected = None
     for size in range(start_size, min_size - 1, -1):
         font = ImageFont.truetype(font_path, size)
@@ -131,7 +131,11 @@ def make_caption(
     card_height = line_height * len(lines) + gap * (len(lines) - 1) + 2 * pad
     card = Image.new("RGBA", (card_width, card_height))
     draw = ImageDraw.Draw(card)
-    draw.rounded_rectangle((0, 0, card_width - 1, card_height - 1), radius=round(22 * scale), fill=(12, 15, 22, 190))
+    draw.rounded_rectangle(
+        (0, 0, card_width - 1, card_height - 1),
+        radius=round((20 if title else 16) * scale),
+        fill=(10, 13, 20, 178 if title else 164),
+    )
     for n, (line, box) in enumerate(zip(lines, boxes)):
         left = (card_width - (box[2] - box[0])) / 2 - box[0]
         top = pad + n * (line_height + gap) - box[1]
@@ -140,7 +144,7 @@ def make_caption(
             prefix = line[:line.index(emphasis)]
             draw.text((left + font.getlength(prefix), top), emphasis, font=font, fill=(255, 226, 102), stroke_width=stroke, stroke_fill=(5, 7, 10, 230))
     x = round(width * .47 - card_width / 2)
-    y = round(height * .10) if title else round(height * .75 - card_height)
+    y = round(height * .085) if title else round(height * .72 - card_height)
     if x < width * .05 or x + card_width > width * .90 or y < 0 or y + card_height > height * .80:
         raise CaptionLayoutError("자막 안전영역 검증에 실패했습니다.")
     return CaptionCard(card, x, y, size, lines)
