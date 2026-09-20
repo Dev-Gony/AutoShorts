@@ -65,11 +65,25 @@ class SceneComposer:
     def _moving_image(self, scene: int, phase: float) -> Image.Image:
         base = self._base(self.image_indices[scene])
         phase = min(1.0, max(0.0, phase))
-        # Alternate a restrained zoom-in / zoom-out. Foreground remains inside frame.
-        scale = 1 + .035 * (phase if scene % 2 == 0 else 1 - phase)
-        zoomed = base.resize((round(self.width * scale), round(self.height * scale)), Image.Resampling.BILINEAR)
-        x = (zoomed.width - self.width) // 2
-        y = (zoomed.height - self.height) // 2
+        # Shorts need visible motion even when the source is a still photo.
+        # Keep it restrained enough that text/menu photos remain readable.
+        eased = phase * phase * (3 - 2 * phase)
+        zoom_phase = eased if scene % 2 == 0 else 1 - eased
+        scale = 1.018 + .052 * zoom_phase
+        zoomed = base.resize(
+            (round(self.width * scale), round(self.height * scale)),
+            Image.Resampling.LANCZOS,
+        )
+        room_x = max(0, zoomed.width - self.width)
+        room_y = max(0, zoomed.height - self.height)
+        direction = scene % 4
+        drift = eased - .5
+        x_shift = drift * room_x * (.55 if direction in (0, 3) else -.55)
+        y_shift = drift * room_y * (.35 if direction in (0, 1) else -.35)
+        x = round(room_x / 2 + x_shift)
+        y = round(room_y / 2 + y_shift)
+        x = max(0, min(room_x, x))
+        y = max(0, min(room_y, y))
         return zoomed.crop((x, y, x + self.width, y + self.height))
 
     def frame(self, time: float, background: np.ndarray | None = None) -> np.ndarray:
@@ -81,12 +95,12 @@ class SceneComposer:
                 raise VisualSourceError("사진 또는 배경 영상이 없습니다. 빈 화면은 렌더링하지 않습니다.")
             image = self._moving_image(index, (t - item.start) / max(.1, item.end - item.start))
             elapsed = t - item.start
-            if index and 0 <= elapsed < .18 and self.image_indices[index] != self.image_indices[index - 1]:
-                image = Image.blend(self._moving_image(index - 1, 1), image, elapsed / .18)
+            if index and 0 <= elapsed < .12 and self.image_indices[index] != self.image_indices[index - 1]:
+                image = Image.blend(self._moving_image(index - 1, 1), image, elapsed / .12)
         else:
             image = ImageOps.fit(Image.fromarray(background.astype("uint8")).convert("RGB"), (self.width, self.height))
         image = image.convert("RGBA")
-        if self.title and t < min(3.4, self.duration):
+        if self.title and t < min(2.0, self.duration):
             image.alpha_composite(self.title.image, (self.title.x, self.title.y))
         if item.start <= t < item.end:
             card = self.cards[index]
