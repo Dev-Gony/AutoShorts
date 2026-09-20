@@ -103,7 +103,19 @@ def test_no_visual_fallback(tmp_path):
 
 
 def valid_plan():
-    return {"title": "한 그릇 리뷰", "scenes": [{"text": "골목에서 한 그릇을 찾았어요.", "emphasis": "한 그릇", "image_index": 0} for _ in range(4)]}
+    texts = [
+        "골목에서 한 그릇을 찾았어요.",
+        "대표 메뉴부터 먼저 볼게요.",
+        "국물의 특징이 눈에 들어와요.",
+        "마지막엔 분위기도 짚어볼게요.",
+    ]
+    return {
+        "title": "한 그릇 리뷰",
+        "scenes": [
+            {"text": text, "emphasis": "", "image_index": 0}
+            for text in texts
+        ],
+    }
 
 
 def test_plan_keeps_scene_mapping_and_original_text():
@@ -136,3 +148,25 @@ def test_invalid_image_index_is_not_hallucinated():
 def test_fake_image_bytes_are_rejected(tmp_path):
     with pytest.raises(OSError):
         normalize_image(b"this is not a photo", tmp_path / "bad.jpg")
+
+
+def test_first_scene_hook_must_be_short():
+    data = valid_plan()
+    data["scenes"][0]["text"] = "첫 장면은 아주 길게 설명부터 시작하면 안 되는 문장이에요"
+    with pytest.raises(ScriptGenerationError, match="첫 장면"):
+        parse_plan(json.dumps(data, ensure_ascii=False), 420, 1)
+
+
+def test_duplicate_scene_text_is_rejected():
+    data = valid_plan()
+    data["scenes"][1]["text"] = data["scenes"][0]["text"]
+    with pytest.raises(ScriptGenerationError, match="반복"):
+        parse_plan(json.dumps(data, ensure_ascii=False), 420, 1)
+
+
+def test_caption_sits_above_bottom_ui_safe_zone():
+    card = make_caption("국물부터 한입 먹어볼게요.", width=1080, height=1920)
+    try:
+        assert card.y + card.image.height <= 1920 * .74
+    finally:
+        card.image.close()
