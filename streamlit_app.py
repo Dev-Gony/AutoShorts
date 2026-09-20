@@ -33,8 +33,8 @@ st.markdown(
         #ffffff;
     }
     .block-container {
-      max-width: 1180px;
-      padding-top: 1.4rem;
+      max-width: 1200px;
+      padding-top: 1.8rem;
       padding-bottom: 4rem;
     }
     [data-testid="stSidebar"] {display: none;}
@@ -79,7 +79,7 @@ st.markdown(
       margin-bottom:1rem;
     }
     .hero-copy h1 {
-      font-size:4rem;
+      font-size:3.72rem;
       line-height:1.03;
       letter-spacing:-.055em;
       margin:.1rem 0 1rem;
@@ -186,8 +186,8 @@ st.markdown(
       padding-top:1.4rem;
     }
     .section-head {
-      display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;
-      margin-bottom:.9rem;
+      display:flex;align-items:flex-start;justify-content:space-between;gap:2rem;
+      margin-bottom:1rem;
     }
     .section-kicker {
       color:#ef4444;font-size:.74rem;font-weight:850;letter-spacing:.08em;
@@ -196,7 +196,10 @@ st.markdown(
     .section-title {
       font-size:1.65rem;font-weight:850;letter-spacing:-.035em;color:var(--ink);
     }
-    .section-copy {color:var(--muted);font-size:.9rem;}
+    .section-copy {
+      color:var(--muted);font-size:.9rem;line-height:1.55;
+      max-width:360px;text-align:right;padding-top:.25rem;
+    }
 
     .panel {
       border:1px solid var(--line);
@@ -246,11 +249,50 @@ st.markdown(
     .ready-box strong {font-size:1rem;}
     .ready-box span {color:#687183;font-size:.85rem;line-height:1.5;}
 
+    .st-key-hero_preview {
+      min-height:500px;
+      border:1px solid rgba(226,230,238,.9);
+      border-radius:28px;
+      background:
+        radial-gradient(circle at 30% 10%, rgba(255,196,196,.40), transparent 32%),
+        radial-gradient(circle at 85% 25%, rgba(173,200,255,.42), transparent 30%),
+        linear-gradient(180deg,#fbfcff,#f5f7fb);
+      padding:22px 24px 26px;
+      box-shadow:0 26px 70px rgba(29,36,50,.10);
+    }
+    .st-key-hero_preview [data-testid="stVideo"] {
+      width:250px !important;
+      max-width:250px !important;
+      margin:10px auto 0;
+      border:8px solid #171b24;
+      border-radius:34px;
+      overflow:hidden;
+      background:#111827;
+      box-shadow:0 28px 55px rgba(17,24,39,.24);
+    }
+    .st-key-hero_preview [data-testid="stVideo"] video {
+      aspect-ratio:9 / 16;
+      object-fit:cover;
+      background:#111827;
+    }
+    .live-preview-label {
+      display:inline-flex;align-items:center;gap:.4rem;
+      padding:8px 11px;border-radius:12px;background:rgba(255,255,255,.94);
+      border:1px solid #e8ebf0;font-size:.78rem;font-weight:800;color:#394150;
+      box-shadow:0 8px 24px rgba(30,35,45,.07);
+    }
+    .live-preview-meta {
+      text-align:center;color:#7a8291;font-size:.76rem;margin-top:.55rem;
+    }
+
     @media (max-width: 850px) {
       .hero-copy h1 {font-size:2.65rem;}
       .preview-shell {min-height:430px;margin-top:1rem;}
       .phone {transform:scale(.86);transform-origin:top right;right:18px;}
       .flow-strip {grid-template-columns:repeat(2,1fr);}
+      .section-head {display:block;}
+      .section-copy {max-width:none;text-align:left;margin-top:.5rem;}
+      .st-key-hero_preview {min-height:auto;margin-top:1rem;}
     }
     </style>
     """,
@@ -294,10 +336,31 @@ STYLE_OPTIONS = {
     },
 }
 
+def latest_generated_video() -> Path | None:
+    """Use the newest real AutoShorts render for the hero preview when available."""
+    result = st.session_state.get("result")
+    if isinstance(result, dict):
+        current = Path(result.get("video", ""))
+        if current.is_file() and current.suffix.lower() == ".mp4":
+            return current
+
+    output_dir = Path("output")
+    if not output_dir.exists():
+        return None
+
+    candidates = [
+        path for path in output_dir.rglob("*.mp4")
+        if path.is_file()
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
 if not can_generate:
     st.info("현재 로컬 개발 설정에서 음성/대본 API 연결을 확인해주세요.")
 
-hero_left, hero_right = st.columns([1.12, .88], gap="large")
+hero_left, hero_right = st.columns([1.04, .96], gap="large", vertical_alignment="center")
 
 with hero_left:
     st.markdown(
@@ -333,34 +396,52 @@ with hero_left:
     )
 
 with hero_right:
-    st.markdown(
-        """
-        <div class="preview-shell">
-          <div class="floating-note">✨ 결과물 미리보기</div>
-          <div class="phone">
-            <div class="phone-notch"></div>
-            <div class="video-scene">
-              <div class="plate"></div>
-              <div class="food"></div>
-              <div class="caption-box">여기 국물 한입 먹어보면<br>왜 인기인지 바로 느껴져요.</div>
+    live_video = latest_generated_video()
+    if live_video:
+        with st.container(key="hero_preview"):
+            st.markdown(
+                '<div class="live-preview-label">▶ 실제 AutoShorts 생성 영상</div>',
+                unsafe_allow_html=True,
+            )
+            st.video(
+                str(live_video),
+                autoplay=True,
+                muted=True,
+                loop=True,
+            )
+            st.markdown(
+                '<div class="live-preview-meta">최근 생성된 실제 결과물을 자동으로 보여줍니다.</div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown(
+            """
+            <div class="preview-shell">
+              <div class="floating-note">✨ 결과물 미리보기</div>
+              <div class="phone">
+                <div class="phone-notch"></div>
+                <div class="video-scene">
+                  <div class="plate"></div>
+                  <div class="food"></div>
+                  <div class="caption-box">쇼츠를 한 번 생성하면<br>실제 결과가 여기에 재생돼요.</div>
+                </div>
+                <div class="phone-lower">
+                  <div class="phone-kicker">AUTO SHORTS</div>
+                  <div class="phone-title">블로그 사진과 글이<br>세로형 리뷰 영상으로</div>
+                  <div class="timeline"><div></div></div>
+                  <div class="phone-meta"><span>PREVIEW</span><span>9:16</span></div>
+                </div>
+              </div>
+              <div class="mini-card">
+                <b>첫 영상 생성 후</b>
+                <div class="mini-line"></div>
+                <div class="mini-line short"></div>
+                <div style="margin-top:10px;font-size:.73rem;color:#687183;">이 영역이 실제 영상으로 교체됩니다.</div>
+              </div>
             </div>
-            <div class="phone-lower">
-              <div class="phone-kicker">AUTO SHORTS</div>
-              <div class="phone-title">블로그 사진과 글이<br>세로형 리뷰 영상으로</div>
-              <div class="timeline"><div></div></div>
-              <div class="phone-meta"><span>00:24</span><span>00:42</span></div>
-            </div>
-          </div>
-          <div class="mini-card">
-            <b>자동으로 처리되는 것</b>
-            <div class="mini-line"></div>
-            <div class="mini-line short"></div>
-            <div style="margin-top:10px;font-size:.73rem;color:#687183;">대본 · 사진 · 음성 · 자막</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
 st.markdown('<div class="section">', unsafe_allow_html=True)
 st.markdown(
@@ -402,33 +483,18 @@ for idx, (name, option) in enumerate(STYLE_OPTIONS.items()):
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="section">', unsafe_allow_html=True)
-voice_col, control_col = st.columns([1.35, .65], gap="large")
-
-with voice_col:
-    st.markdown(
-        """
+st.markdown(
+    """
+    <div class="section-head">
+      <div>
         <div class="section-kicker">VOICE</div>
         <div class="section-title">목소리는 간단하게.</div>
-        <div class="section-copy" style="margin-top:.35rem;margin-bottom:.9rem;">
-          서비스 기본 한국어 쇼츠 음성을 사용하고, 복잡한 엔진 설정은 숨겼습니다.
-        </div>
-        <div class="voice-feature">
-          <div class="voice-dot">▶</div>
-          <div><b>자연스러운 한국어 쇼츠 음성</b><span>한 가지 기본 음성으로 일관된 결과물을 만듭니다.</span></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with control_col:
-    speed = st.slider(
-        "말하기 속도",
-        min_value=.96,
-        max_value=1.16,
-        value=1.08,
-        step=.02,
-        help="쇼츠에 맞게 기본값을 조금 빠르게 설정했습니다.",
-    )
+      </div>
+      <div class="section-copy">기본 한국어 쇼츠 음성은 하나로 유지하고 속도만 가볍게 조절합니다.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 def resolve_service_voice() -> str:
     existing = st.session_state.get("service_voice_id")
@@ -448,17 +514,40 @@ def resolve_service_voice() -> str:
 
     # Keep the selected voice opaque to the end user; provider changes should not alter the UI.
 
-if st.button("목소리 미리듣기", disabled=not tts_ready):
-    try:
-        with st.spinner("한국어 음성 샘플을 만드는 중"):
-            voice_id = resolve_service_voice()
-            path = preview_voice(preset, speed, voice_id=voice_id)
-        st.session_state["service_preview"] = str(path)
-    except Exception as exc:
-        st.error(safe_error(exc))
+with st.container(border=True):
+    voice_col, control_col = st.columns([1.38, .62], gap="large", vertical_alignment="center")
 
-if st.session_state.get("service_preview"):
-    st.audio(st.session_state["service_preview"])
+    with control_col:
+        speed = st.slider(
+            "말하기 속도",
+            min_value=.96,
+            max_value=1.16,
+            value=1.08,
+            step=.02,
+            help="쇼츠에 맞게 기본값을 조금 빠르게 설정했습니다.",
+        )
+
+    with voice_col:
+        st.markdown(
+            """
+            <div class="voice-feature">
+              <div class="voice-dot">▶</div>
+              <div><b>자연스러운 한국어 쇼츠 음성</b><span>한 가지 기본 음성으로 일관된 결과물을 만듭니다.</span></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("목소리 미리듣기", disabled=not tts_ready):
+            try:
+                with st.spinner("한국어 음성 샘플을 만드는 중"):
+                    voice_id = resolve_service_voice()
+                    path = preview_voice(preset, speed, voice_id=voice_id)
+                st.session_state["service_preview"] = str(path)
+            except Exception as exc:
+                st.error(safe_error(exc))
+
+        if st.session_state.get("service_preview"):
+            st.audio(st.session_state["service_preview"])
 
 st.markdown('</div>', unsafe_allow_html=True)
 
