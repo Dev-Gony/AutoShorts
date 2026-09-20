@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from html import escape
 
 import streamlit as st
 
@@ -116,19 +117,34 @@ with top_col:
 selected_voice_id = settings.typecast_voice_id or st.session_state.get("chosen_voice_id")
 selected_voice_label = st.session_state.get("chosen_voice_label", "")
 
+GENDER_KO = {
+    "male": "남성",
+    "female": "여성",
+    "neutral": "중성",
+}
+AGE_KO = {
+    "young adult": "청년",
+    "middle age": "중년",
+    "teenager": "10대",
+    "child": "아동",
+    "senior": "시니어",
+}
+
 if voices:
     cols = st.columns(4)
     for index, voice in enumerate(voices):
         with cols[index % 4]:
             tags = "".join(
-                f'<span class="chip">{tag}</span>'
+                f'<span class="chip">{escape(tag)}</span>'
                 for tag in voice.shorts_tags
             )
-            meta = " · ".join(x for x in (voice.gender, voice.age) if x)
+            gender = GENDER_KO.get(voice.gender.lower(), voice.gender)
+            age = AGE_KO.get(voice.age.lower(), voice.age)
+            meta = " · ".join(x for x in (gender, age) if x)
             st.markdown(
                 f"""
                 <div class="voice-card">
-                  <strong>#{index + 1} {voice.name}</strong>
+                  <strong>#{index + 1} {escape(voice.name)}</strong>
                   <div class="voice-meta">{meta or "Typecast API voice"}</div>
                   <div>{tags}</div>
                 </div>
