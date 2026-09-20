@@ -226,3 +226,24 @@ Typecast 자동 추천 1개만 사용했을 때 여전히 일반 내레이션 �
 교훈:
 - Typecast Studio의 유명 캐릭터 이름과 API Voice Library는 별도 제품 표면으로 취급한다.
 - API에 실제 노출된 voice_id만 실행 가능한 보이스로 표시한다.
+
+
+### 서비스형 UI + 쇼츠 추천 TOP 8
+
+실사용 화면에서 API 보이스 수십 개가 그대로 노출되어 서비스 UI로 보기 어렵다는 피드백 반영.
+
+변경:
+- [x] Typecast API가 공개하지 않는 실제 인기/사용량 순위를 '인기순'으로 표시하지 않음
+- [x] 현재 계정의 실제 API 보이스를 use_cases/연령/미리듣기 가능 여부로 점수화
+- [x] TikTok/Reels/Shorts, YouTube, Review, Social, Video, Ads/Promotion, Conversational 순으로 가중치 부여
+- [x] 기본 화면에는 쇼츠 적합도 TOP 8만 카드 형태로 표시
+- [x] 전체 보이스 목록과 검색은 '고급' 영역으로 이동
+- [x] 좌측 개발자 사이드바 중심 UI 제거
+- [x] 1) URL 입력 → 2) 보이스 선택/미리듣기 → 3) 생성 → 결과 화면 순서로 재구성
+- [x] Provider/model 같은 기술 정보는 최소화
+- [x] 선택한 보이스/소스/목표 길이를 생성 전 요약
+- [x] 결과 MP4/대본/재렌더링을 결과 섹션으로 분리
+
+표현 원칙:
+- 'TOP 8'은 Typecast 전체 인기 순위가 아니라 AutoShorts의 쇼츠 적합도 순위다.
+- 실제 인기 순위/사용량은 Typecast API에서 제공되는 데이터가 있을 때만 표시한다.

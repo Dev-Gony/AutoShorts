@@ -8,10 +8,28 @@ from config import settings
 from src.voices import selected_profile
 
 
-SHORTS_KEYWORDS = (
-    "short", "youtube", "tiktok", "social", "content",
-    "video", "review", "entertainment", "vlog",
-)
+USE_CASE_WEIGHTS = {
+    "tiktok/reels/shorts": 120,
+    "shorts": 110,
+    "tiktok": 100,
+    "reels": 100,
+    "youtube": 95,
+    "social": 90,
+    "review": 85,
+    "content": 75,
+    "video": 70,
+    "ads/promotion": 60,
+    "conversational": 55,
+    "game": 30,
+    "radio/podcast": 15,
+    "storytelling": 10,
+}
+
+AGE_WEIGHTS = {
+    "young adult": 18,
+    "teenager": 12,
+    "middle age": 4,
+}
 
 
 @dataclass(frozen=True)
@@ -37,8 +55,33 @@ class TypecastVoiceCandidate:
 
     @property
     def shorts_score(self) -> int:
-        haystack = " ".join(self.use_cases).lower()
-        return sum(1 for keyword in SHORTS_KEYWORDS if keyword in haystack)
+        """Suitability score for short-form video. This is not a popularity metric."""
+        total = AGE_WEIGHTS.get(self.age.lower(), 0)
+        if self.preview_url:
+            total += 3
+        for use_case in self.use_cases:
+            normalized = use_case.lower().strip()
+            total += USE_CASE_WEIGHTS.get(normalized, 0)
+            if normalized not in USE_CASE_WEIGHTS:
+                for keyword, weight in USE_CASE_WEIGHTS.items():
+                    if keyword in normalized:
+                        total += weight
+                        break
+        return total
+
+    @property
+    def shorts_tags(self) -> tuple[str, ...]:
+        preferred = []
+        for use_case in self.use_cases:
+            lowered = use_case.lower()
+            if any(
+                token in lowered
+                for token in ("short", "tiktok", "reels", "youtube", "review", "social", "ads", "conversational")
+            ):
+                preferred.append(use_case)
+        if not preferred:
+            preferred = list(self.use_cases[:2])
+        return tuple(preferred[:3])
 
 
 def _candidate_list(payload) -> list[dict]:
@@ -105,28 +148,41 @@ def _candidate(item: dict) -> TypecastVoiceCandidate | None:
     )
 
 
+def _fetch_voice_list() -> list[dict]:
+    """Prefer the current v3 endpoint, with v2 fallback for older accounts."""
+    headers = {"X-API-KEY": settings.typecast_api_key}
+    last_error: Exception | None = None
+    for version in ("v3", "v2"):
+        try:
+            response = requests.get(
+                f"{settings.typecast_api_base}/{version}/voices",
+                headers=headers,
+                params={"model": settings.typecast_model},
+                timeout=(5, 25),
+            )
+            response.raise_for_status()
+            return _candidate_list(response.json())
+        except requests.RequestException as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    return []
+
+
 def browse_typecast_voices(
     search: str = "",
     gender: str = "",
     age: str = "",
-    limit: int = 40,
+    limit: int = 80,
 ) -> list[TypecastVoiceCandidate]:
     """Return voices actually exposed by the user's current Typecast API account."""
-    response = requests.get(
-        f"{settings.typecast_api_base}/v2/voices",
-        headers={"X-API-KEY": settings.typecast_api_key},
-        params={"model": settings.typecast_model},
-        timeout=(5, 25),
-    )
-    response.raise_for_status()
-
     search_norm = search.strip().lower()
     gender_norm = gender.strip().lower().replace("_", " ")
     age_norm = age.strip().lower().replace("_", " ")
 
     result: list[TypecastVoiceCandidate] = []
     seen: set[str] = set()
-    for item in _candidate_list(response.json()):
+    for item in _fetch_voice_list():
         if not isinstance(item, dict):
             continue
         candidate = _candidate(item)
@@ -145,13 +201,18 @@ def browse_typecast_voices(
         seen.add(candidate.voice_id)
         result.append(candidate)
 
-    # Surface content/video-oriented voices first, then keep stable name ordering.
     result.sort(key=lambda item: (-item.shorts_score, item.name.lower()))
     return result[:limit]
 
 
+def top_shorts_voices(limit: int = 8) -> list[TypecastVoiceCandidate]:
+    """Rank available API voices by Shorts suitability, not by undisclosed popularity."""
+    voices = browse_typecast_voices(limit=200)
+    ranked = [voice for voice in voices if voice.shorts_score > 0]
+    return (ranked or voices)[:limit]
+
+
 def recommend_typecast_voices(preset: str, limit: int = 5) -> list[TypecastVoiceCandidate]:
-    """Use recommendations, then verify each candidate against V2 voice details."""
     _, profile = selected_profile(preset)
     response = requests.get(
         f"{settings.typecast_api_base}/v1/voices/recommendations",
@@ -168,34 +229,6 @@ def recommend_typecast_voices(preset: str, limit: int = 5) -> list[TypecastVoice
             if candidate:
                 raw_candidates.append(candidate)
 
-    verified: list[TypecastVoiceCandidate] = []
-    for candidate in raw_candidates[:limit]:
-        try:
-            detail = requests.get(
-                f"{settings.typecast_api_base}/v2/voices/{candidate.voice_id}",
-                headers={"X-API-KEY": settings.typecast_api_key},
-                timeout=(5, 15),
-            )
-            detail.raise_for_status()
-            payload = detail.json()
-            if isinstance(payload, dict):
-                enriched = _candidate(payload) or candidate
-            else:
-                enriched = candidate
-            verified.append(TypecastVoiceCandidate(
-                voice_id=enriched.voice_id,
-                name=enriched.name,
-                gender=enriched.gender,
-                age=enriched.age,
-                score=candidate.score,
-                preview_url=enriched.preview_url,
-                use_cases=enriched.use_cases,
-                models=enriched.models,
-            ))
-        except requests.RequestException:
-            # Recommendation remains usable for TTS, but metadata may be sparse.
-            verified.append(candidate)
-
-    if not verified:
+    if not raw_candidates:
         raise RuntimeError("Typecast에서 추천 보이스 후보를 찾지 못했습니다.")
-    return verified
+    return raw_candidates[:limit]
