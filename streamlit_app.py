@@ -8,7 +8,7 @@ import streamlit as st
 from config import settings
 from src.pipeline import Pipeline, rerender
 from src.preview import preview_voice, safe_error
-from src.typecast_voices import browse_typecast_voices, top_shorts_voices
+from src.typecast_voices import browse_typecast_voices, top_korean_shorts_voices
 from src.voices import PROFILES, selected_profile
 
 st.set_page_config(
@@ -79,7 +79,7 @@ st.divider()
 # STEP 2
 st.markdown('<div class="step-label">STEP 2 · VOICE</div>', unsafe_allow_html=True)
 st.subheader("쇼츠에 어울리는 목소리를 고르세요")
-st.caption("‘인기순’ 데이터는 공개되지 않아, 현재 API에서 사용 가능한 보이스 중 쇼츠/릴스/리뷰 용도 적합도가 높은 순으로 정렬합니다.")
+st.caption("한국어 원어민 느낌의 쇼츠·릴스·맛집 리뷰 보이스를 우선 추천합니다. 미리듣기도 모두 한국어 문장으로 생성합니다.")
 
 top_col, settings_col = st.columns([3, 1])
 
@@ -100,7 +100,7 @@ with top_col:
     if "shorts_top_voices" not in st.session_state and tts_ready:
         try:
             with st.spinner("쇼츠용 보이스를 고르는 중"):
-                st.session_state["shorts_top_voices"] = top_shorts_voices(limit=8)
+                st.session_state["shorts_top_voices"] = top_korean_shorts_voices(preset=preset, limit=8)
         except Exception as exc:
             st.error(safe_error(exc))
             st.session_state["shorts_top_voices"] = []
@@ -109,7 +109,7 @@ with top_col:
     if st.button("추천 보이스 새로고침", disabled=not tts_ready):
         try:
             with st.spinner("Typecast 보이스 다시 불러오는 중"):
-                st.session_state["shorts_top_voices"] = top_shorts_voices(limit=8)
+                st.session_state["shorts_top_voices"] = top_korean_shorts_voices(preset=preset, limit=8)
             st.rerun()
         except Exception as exc:
             st.error(safe_error(exc))
@@ -151,8 +151,20 @@ if voices:
                 """,
                 unsafe_allow_html=True,
             )
-            if voice.preview_url:
-                st.audio(voice.preview_url)
+            if st.button(
+                "한국어 미리듣기",
+                key=f"preview_top_{voice.voice_id}",
+                use_container_width=True,
+            ):
+                try:
+                    with st.spinner("한국어 샘플 생성 중"):
+                        path = preview_voice(preset, speed, voice_id=voice.voice_id)
+                    st.session_state["card_voice_preview"] = str(path)
+                    st.session_state["card_voice_preview_id"] = voice.voice_id
+                except Exception as exc:
+                    st.error(safe_error(exc))
+            if st.session_state.get("card_voice_preview_id") == voice.voice_id:
+                st.audio(st.session_state["card_voice_preview"])
             if st.button(
                 "선택",
                 key=f"pick_top_{voice.voice_id}",
@@ -164,11 +176,13 @@ if voices:
                 selected_voice_id = voice.voice_id
                 selected_voice_label = voice.name
                 st.session_state.pop("voice_preview", None)
+                st.session_state.pop("card_voice_preview", None)
+                st.session_state.pop("card_voice_preview_id", None)
                 st.rerun()
 
     if selected_voice_id:
         st.success(f"선택한 보이스: {selected_voice_label or selected_voice_id}")
-        if st.button("선택한 목소리로 4초 미리듣기", use_container_width=False):
+        if st.button("선택한 목소리로 한국어 4초 미리듣기", use_container_width=False):
             try:
                 with st.spinner("미리듣기 생성 중"):
                     path = preview_voice(preset, speed, voice_id=selected_voice_id)
