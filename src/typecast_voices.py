@@ -114,16 +114,39 @@ def _model_versions(item: dict) -> tuple[str, ...]:
     return tuple(versions)
 
 
+def _localized_text(value, *, prefer: tuple[str, ...] = ("kor", "ko", "eng", "en")) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in prefer:
+            text = value.get(key)
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+        for text in value.values():
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+        return ""
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            text = _localized_text(item, prefer=prefer)
+            if text:
+                return text
+        return ""
+    return str(value).strip()
+
+
 def _candidate(item: dict) -> TypecastVoiceCandidate | None:
-    voice_id = str(item.get("voice_id") or item.get("id") or "").strip()
+    voice_id = _localized_text(item.get("voice_id") or item.get("id"))
     if not voice_id:
         return None
-    name = str(
+    name = _localized_text(
         item.get("voice_name")
         or item.get("name")
         or item.get("display_name")
         or voice_id
-    ).strip()
+    )
     score = item.get("score")
     try:
         score = float(score) if score is not None else None
@@ -134,13 +157,16 @@ def _candidate(item: dict) -> TypecastVoiceCandidate | None:
     if isinstance(raw_use_cases, str):
         use_cases = (raw_use_cases,)
     else:
-        use_cases = tuple(str(value) for value in raw_use_cases if value)
+        use_cases = tuple(
+            text for value in raw_use_cases
+            if (text := _localized_text(value))
+        )
 
     return TypecastVoiceCandidate(
         voice_id=voice_id,
         name=name,
-        gender=str(item.get("gender") or "").replace("_", " "),
-        age=str(item.get("age") or item.get("age_group") or "").replace("_", " "),
+        gender=_localized_text(item.get("gender")).replace("_", " "),
+        age=_localized_text(item.get("age") or item.get("age_group")).replace("_", " "),
         score=score,
         preview_url=str(item.get("preview_url") or item.get("sample_url") or ""),
         use_cases=use_cases,
